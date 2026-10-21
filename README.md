@@ -353,4 +353,4 @@ See `packages/sdk/README.md` for detailed SDK documentation.
 
 ## 📄 License
 
-This project is private and proprietary.
+This project is licensed under the [GNU General Public License v3.0](LICENSE) - see the [LICENSE](LICENSE) file for details.
