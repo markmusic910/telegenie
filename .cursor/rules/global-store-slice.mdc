@@ -1,0 +1,40 @@
+---
+description: Global-store slices must extend GlobalStoreSlice
+globs: packages/sdk/src/store/global/**/*.slice.ts
+alwaysApply: false
+---
+
+# Global store slices
+
+Every `*.slice.ts` under `packages/sdk/src/store/global` must `extend GlobalStoreSlice` (`packages/sdk/src/store/global/global-store.slice.ts`). Nested slices may also `implement` a view interface (`DialogUIState`, `ThreadUIState`).
+
+```typescript
+// ❌ BAD — standalone class, makeAutoObservable
+export class ThreadSlice implements ThreadUIState {
+  constructor(ctx: ThreadSliceContext) {
+    this.ctx = ctx;
+    makeAutoObservable(this);
+  }
+}
+
+// ✅ GOOD
+export class ThreadSlice extends GlobalStoreSlice implements ThreadUIState {
+  constructor(ctx: ThreadSliceContext, snapshot?: ThreadUISnapshot) {
+    super();
+    this.ctx = ctx;
+    this.applySnapshot(snapshot);
+    this.observe({ ctx: false, getMessageList: false });
+  }
+
+  toJS(): Record<string, unknown> {
+    return this.toSnapshot();
+  }
+
+  hydrateFromSnapshot(snapshot: Record<string, unknown> | undefined) {
+    this.applySnapshot(snapshot as ThreadUISnapshot | undefined);
+  }
+}
+```
+
+- Do **not** call `makeAutoObservable` — MobX forbids it on subclasses. Call `this.observe()` at the **end** of the constructor (pass `false` for untracked fields).
+- Implement `toJS` / `hydrateFromSnapshot`. Dialog/thread persist units may keep `toSnapshot` / `fromSnapshot` and delegate.

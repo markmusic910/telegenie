@@ -1,0 +1,53 @@
+{
+  "name": "@telegenie/sdk",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./store/types": {
+      "types": "./dist/store/types/index.d.ts",
+      "default": "./dist/store/types/index.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json --noCheck",
+    "dev": "tsc -p tsconfig.build.json --noCheck --watch --preserveWatchOutput",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@telegenie/agent": "workspace:*",
+    "@telegenie/decorators": "workspace:*",
+    "@telegenie/libs": "workspace:*",
+    "@telegenie/teleproto": "workspace:*",
+    "await-to-js": "^3.0.0",
+    "disposablestack": "^1.1.7",
+    "eventemitter2": "^6.4.9",
+    "lodash-es": "^4.17.21",
+    "mobx": "^6.13.7",
+    "uuidv4": "^6.2.13"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.1",
+    "@types/lodash-es": "^4.17",
+    "fake-indexeddb": "^6.0.0",
+    "jest": "^29.5.0",
+    "ts-jest": "^29.1.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
+  },
+  "peerDependencies": {
+    "mobx-react-lite": "^4.1.0",
+    "react": "^19.1.1"
+  }
+}

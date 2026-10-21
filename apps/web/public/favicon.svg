@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="neon-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#41D1FF" />
+      <stop offset="100%" stop-color="#BD34FE" />
+    </linearGradient>
+  </defs>
+  <!-- Extremely minimal genie lamp pattern, optimized for browser tab favicons (no background) -->
+  <g stroke="url(#neon-grad)" stroke-width="44" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Base -->
+    <path d="M 180 400 H 332" />
+    
+    <!-- Body -->
+    <path d="M 256 400 V 350 C 180 350, 160 260, 256 260 C 352 260, 332 350, 256 350" />
+    
+    <!-- Spout -->
+    <path d="M 175 290 C 110 290, 80 230, 100 200" />
+    
+    <!-- Handle -->
+    <path d="M 330 290 C 390 290, 390 350, 320 350" />
+  </g>
+</svg>

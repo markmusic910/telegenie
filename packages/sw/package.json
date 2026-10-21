@@ -1,0 +1,33 @@
+{
+  "name": "@telegenie/sw",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noCheck",
+    "dev": "tsc -p tsconfig.json --noCheck --watch --preserveWatchOutput",
+    "build:bundle": "esbuild src/index.ts --bundle --minify --sourcemap --platform=browser --target=es2022 --format=esm --define:process.env.NODE_ENV=\\\"production\\\" --conditions=production --alias:@telegenie/sw=./src --alias:@telegenie/decorators=../decorators/src/index.prod.ts --outfile=../../apps/web/public/sw.js",
+    "dev:bundle": "esbuild src/index.ts --bundle --sourcemap --platform=browser --target=es2022 --format=esm --define:process.env.NODE_ENV=\\\"development\\\" --alias:@telegenie/sw=./src --alias:@telegenie/decorators=../decorators/src/index.ts --outfile=../../apps/web/public/sw.js --watch",
+    "test": "echo 'No tests yet'"
+  },
+  "dependencies": {
+    "@telegenie/decorators": "workspace:*",
+    "@telegenie/libs": "workspace:*"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
+  }
+}

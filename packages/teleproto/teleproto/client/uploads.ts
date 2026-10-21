@@ -1,0 +1,989 @@
+import { Api } from "../tl";
+
+import { TelegramClient } from "./TelegramClient";
+import { generateRandomBytes, readBigIntFromBuffer, unionId } from "../Helpers";
+import { getAppropriatedPartSize, getInputMedia, getMessageId } from "../Utils";
+import { EntityLike, FileLike, MarkupLike, MessageIDLike } from "../define";
+import path from "../platform/path";
+import { promises as fs } from "../platform/fs";
+import * as utils from "../Utils";
+import { _parseMessageText } from "./messageParse";
+import bigInt, { BigInteger } from "big-integer";
+import { BoundedSemaphore } from "../network/OrderedWriter";
+
+interface OnProgress {
+    // Float between 0 and 1.
+    (progress: number): void;
+
+    isCanceled?: boolean;
+}
+
+/**
+ * interface for uploading files.
+ */
+export interface UploadFileParams {
+    /** In runtimes with File API this can be an instance of File.<br/>
+     * On Node.js you should use {@link CustomFile} class to wrap your file.
+     */
+    file: File | CustomFile;
+    /** Parts to keep in flight. Defaults to a parallel value when omitted;
+     * anything above 16 is unstable. */
+    workers?: number;
+    /** a progress callback for the upload. */
+    onProgress?: OnProgress;
+    maxBufferSize?: number;
+}
+
+/**
+ * A custom file class compatible with File-like upload shape.<br/>
+ * You should use this whenever you want to upload a file.
+ */
+export class CustomFile {
+    /** The name of the file to be uploaded. This is what will be shown in telegram */
+    name: string;
+    /** The size of the file. this should be the exact size to not lose any information */
+    size: number;
+    /** The full path on the system to where the file is. this will be used to read the file from.<br/>
+     * Can be left empty to use a buffer instead
+     */
+    path: string;
+    /** in case of the no path a buffer can instead be passed instead to upload. */
+    buffer?: Buffer;
+
+    constructor(name: string, size: number, path: string, buffer?: Buffer) {
+        this.name = name;
+        this.size = size;
+        this.path = path;
+        this.buffer = buffer;
+    }
+}
+
+interface CustomBufferOptions {
+    filePath?: string;
+    buffer?: Buffer;
+}
+
+class CustomBuffer {
+    constructor(private readonly options: CustomBufferOptions) {
+        if (!options.buffer && !options.filePath) {
+            throw new Error(
+                "Either one of `buffer` or `filePath` should be specified"
+            );
+        }
+    }
+
+    async slice(begin: number, end: number): Promise<Buffer> {
+        const { buffer, filePath } = this.options;
+        if (buffer) {
+            return buffer.slice(begin, end);
+        } else if (filePath) {
+            const buffSize = end - begin;
+            const buff = Buffer.alloc(buffSize);
+            const fHandle = await fs.open(filePath, "r");
+
+            await fHandle.read(buff, 0, buffSize, begin);
+            await fHandle.close();
+
+            return Buffer.from(buff);
+        }
+
+        return Buffer.alloc(0);
+    }
+}
+
+const KB_TO_BYTES = 1024;
+const LARGE_FILE_THRESHOLD = 10 * 1024 * 1024;
+const BUFFER_SIZE_20MB = 20 * 1024 * 1024;
+
+async function getFileBuffer(
+    file: File | CustomFile,
+    fileSize: number,
+    maxBufferSize: number
+): Promise<CustomBuffer> {
+    const options: CustomBufferOptions = {};
+    if (fileSize > maxBufferSize && file instanceof CustomFile) {
+        options.filePath = file.path;
+    } else {
+        options.buffer = Buffer.from(await fileToBuffer(file));
+    }
+
+    return new CustomBuffer(options);
+}
+
+/** @hidden */
+export async function uploadFile(
+    client: TelegramClient,
+    fileParams: UploadFileParams
+): Promise<Api.InputFile | Api.InputFileBig> {
+    const { file, onProgress } = fileParams;
+    let { workers } = fileParams;
+
+    const { name, size } = file;
+    const fileId = readBigIntFromBuffer(generateRandomBytes(8), true, true);
+    const isLarge = size > LARGE_FILE_THRESHOLD;
+
+    const partSize = getAppropriatedPartSize(bigInt(size)) * KB_TO_BYTES;
+    const partCount = Math.floor((size + partSize - 1) / partSize);
+    const buffer = await getFileBuffer(
+        file,
+        size,
+        fileParams.maxBufferSize || BUFFER_SIZE_20MB - 1
+    );
+
+    const ul = client._media.opts.upload;
+    let readAhead = Math.max(
+        1,
+        ul.maxSessions * Math.ceil(ul.maxWindow / Math.max(1, partSize))
+    );
+    if (workers && workers > 0) {
+        readAhead = Math.min(readAhead, workers);
+    }
+    if (readAhead > partCount) {
+        readAhead = partCount;
+    }
+
+    let progress = 0;
+    if (onProgress) {
+        onProgress(progress);
+    }
+
+    const dcId = client.session.dcId;
+    const abort = new AbortController();
+    const inflight = new BoundedSemaphore(Math.max(1, readAhead));
+    let firstError: any;
+    const tasks: Promise<void>[] = [];
+
+    for (let j = 0; j < partCount; j++) {
+        let endPart = (j + 1) * partSize;
+        if (endPart > size) {
+            endPart = size;
+        }
+        if (endPart == j * partSize) {
+            break;
+        }
+
+        if (firstError) break;
+        await inflight.acquire();
+        if (firstError) {
+            inflight.release();
+            break;
+        }
+
+        const jMemo = j;
+        const startPart = j * partSize;
+        const endPartMemo = endPart;
+
+        // eslint-disable-next-line no-loop-func
+        tasks.push(
+            (async () => {
+                try {
+                    const bytesMemo = await buffer.slice(startPart, endPartMemo);
+                    await client._media.savePart(
+                        dcId,
+                        isLarge
+                            ? new Api.upload.SaveBigFilePart({
+                                fileId,
+                                filePart: jMemo,
+                                fileTotalParts: partCount,
+                                bytes: bytesMemo,
+                            })
+                            : new Api.upload.SaveFilePart({
+                                fileId,
+                                filePart: jMemo,
+                                bytes: bytesMemo,
+                            }),
+                        abort.signal
+                    );
+
+                    if (onProgress) {
+                        if (onProgress.isCanceled) {
+                            throw new Error("USER_CANCELED");
+                        }
+
+                        progress += 1 / partCount;
+                        onProgress(progress);
+                    }
+                } catch (err: any) {
+                    if (!firstError) firstError = err;
+                    abort.abort();
+                } finally {
+                    inflight.release();
+                }
+            })()
+        );
+    }
+
+    await Promise.all(tasks);
+    if (firstError) {
+        throw firstError;
+    }
+
+    return isLarge
+        ? new Api.InputFileBig({
+            id: fileId,
+            parts: partCount,
+            name,
+        })
+        : new Api.InputFile({
+            id: fileId,
+            parts: partCount,
+            name,
+            md5Checksum: "", // This is not a "flag", so not sure if we can make it optional.
+        });
+}
+
+/**
+ * Interface for sending files to a chat.
+ */
+export interface SendFileInterface {
+    /** a file like object.
+     *   - can be a localpath. the file name will be used.
+     *   - can be a Buffer with a ".name" attribute to use as the file name.
+     *   - can be an external direct URL. Telegram will download the file and send it.
+     *   - can be an existing media from another message.
+     *   - can be a handle to a file that was received by using {@link TelegramClient.uploadFile}
+     *   - can be a list when using an album
+     *   - can be {@link Api.TypeInputMedia} instance. For example if you want to send a dice you would use {@link Api.InputMediaDice}
+     */
+    file: FileLike | FileLike[];
+    /** Optional caption for the sent media message. can be a list for albums*/
+    caption?: string | string[];
+    /** If left to false and the file is a path that ends with the extension of an image file or a video file, it will be sent as such. Otherwise always as a document. */
+    forceDocument?: boolean;
+    /** The size of the file to be uploaded if it needs to be uploaded, which will be determined automatically if not specified. */
+    fileSize?: number;
+    /** Whether the existing draft should be cleared or not. */
+    clearDraft?: boolean;
+    /** progress callback that will be called each time a new chunk is downloaded. */
+    progressCallback?: OnProgress;
+    /** Same as `replyTo` from {@link TelegramClient.sendMessage}. Also accepts a raw {@link Api.TypeInputReplyTo} for full control (stories, monoforums, todo items). */
+    replyTo?: MessageIDLike | Api.TypeInputReplyTo;
+    /** Quoted part of the message being replied to. Requires `replyTo`. */
+    quoteText?: string;
+    /** Formatting entities of the quote. Offsets are relative to `quoteText`. */
+    quoteEntities?: Api.TypeMessageEntity[];
+    /** Offset of the quote within the original message (UTF-16 code units). */
+    quoteOffset?: number;
+    /** Chat where the quoted message was sent, for quoting messages from other chats. */
+    replyToPeerId?: EntityLike;
+    /** Optional attributes that override the inferred ones, like {@link Api.DocumentAttributeFilename} and so on.*/
+    attributes?: Api.TypeDocumentAttribute[] | Api.TypeDocumentAttribute[][];
+    /** Optional JPEG thumbnail (for documents). Telegram will ignore this parameter unless you pass a .jpg file!<br/>
+     * The file must also be small in dimensions and in disk size. Successful thumbnails were files below 20kB and 320x320px.<br/>
+     *  Width/height and dimensions/size ratios may be important.
+     *  For Telegram to accept a thumbnail, you must provide the dimensions of the underlying media through `attributes:` with DocumentAttributesVideo.
+     */
+    thumb?: FileLike;
+    /** If true the audio will be sent as a voice note. */
+    voiceNote?: boolean;
+    /** If true the video will be sent as a video note, also known as a round video message.*/
+    videoNote?: boolean;
+    /** Whether the sent video supports streaming or not.<br/>
+     *  Note that Telegram only recognizes as streamable some formats like MP4, and others like AVI or MKV will not work.<br/>
+     *  You should convert these to MP4 before sending if you want them to be streamable. Unsupported formats will result in VideoContentTypeError. */
+    supportsStreaming?: boolean;
+    /** See the {@link parseMode} property for allowed values. Markdown parsing will be used by default. */
+    parseMode?: any;
+    /** A list of message formatting entities. When provided, the parseMode is ignored. */
+    formattingEntities?: Api.TypeMessageEntity[];
+    /** Whether the message should notify people in a broadcast channel or not. Defaults to false, which means it will notify them. Set it to True to alter this behaviour. */
+    silent?: boolean;
+    /**
+     * If set, the file won't send immediately, and instead it will be scheduled to be automatically sent at a later time.
+     */
+    scheduleDate?: number;
+    /**
+     * The matrix (list of lists), row list or button to be shown after sending the message.<br/>
+     * This parameter will only work if you have signed in as a bot. You can also pass your own ReplyMarkup here.
+     */
+    buttons?: MarkupLike;
+    /** How many workers to use to upload the file. anything above 16 is unstable. */
+    workers?: number;
+    noforwards?: boolean;
+    /** Similar to ``replyTo``, but replies in the linked group of a broadcast channel instead (effectively leaving a "comment to" the specified message).
+
+     This parameter takes precedence over ``replyTo``.
+     If there is no linked chat, `SG_ID_INVALID` is thrown.
+     */
+    commentTo?: number | Api.Message;
+    /**
+     * Used for threads to reply to a specific thread
+     */
+    topMsgId?: number | Api.Message;
+    /** Send the file as a specific entity (channel/user). */
+    sendAs?: EntityLike;
+    /** Message effect ID (animation/visual effect). */
+    effect?: BigInteger;
+    /** If true, media will be shown below the text instead of above. */
+    invertMedia?: boolean;
+    /** Send this message as a background message. */
+    background?: boolean;
+    /** Whether the order of the user's sticker sets should be updated when a sticker is sent. */
+    updateStickersetsOrder?: boolean;
+    /** Bots only: if set, allows sending up to 1000 messages per second past the flood limits, at a Stars cost. */
+    allowPaidFloodskip?: boolean;
+    /** Stars to pay for sending a paid message, when the recipient charges for messages. */
+    allowPaidStars?: BigInteger;
+    /** Repeat period (in seconds) for recurring scheduled messages. Requires `scheduleDate`. */
+    scheduleRepeatPeriod?: number;
+    /** Add the message to a quick-reply shortcut instead of sending it. A shortcut name, shortcut ID, or a raw {@link Api.TypeInputQuickReplyShortcut}. */
+    quickReplyShortcut?: string | number | Api.TypeInputQuickReplyShortcut;
+    /** Suggested-post metadata for direct-messages channels. */
+    suggestedPost?: Api.TypeSuggestedPost;
+    /** Mark the media as spoiler (blurred until tapped). */
+    spoiler?: boolean;
+    /** Self-destruct timer for the media, in seconds. */
+    ttlSeconds?: number;
+    /** If true, the uploaded video has no sound (sent as a silent video). */
+    nosoundVideo?: boolean;
+    /** Custom cover photo for the video. */
+    videoCover?: Api.TypeInputPhoto;
+    /** Start playback timestamp of the video, in seconds. */
+    videoTimestamp?: number;
+}
+
+interface FileToMediaInterface {
+    file: FileLike;
+    forceDocument?: boolean;
+    fileSize?: number;
+    progressCallback?: OnProgress;
+    attributes?: Api.TypeDocumentAttribute[];
+    thumb?: FileLike;
+    voiceNote?: boolean;
+    videoNote?: boolean;
+    supportsStreaming?: boolean;
+    mimeType?: string;
+    asImage?: boolean;
+    workers?: number;
+    spoiler?: boolean;
+    ttlSeconds?: number;
+    nosoundVideo?: boolean;
+    videoCover?: Api.TypeInputPhoto;
+    videoTimestamp?: number;
+}
+
+/** @hidden */
+export function _toQuickReplyShortcut(
+    shortcut: string | number | Api.TypeInputQuickReplyShortcut | undefined
+): Api.TypeInputQuickReplyShortcut | undefined {
+    if (shortcut == undefined) {
+        return undefined;
+    }
+    if (typeof shortcut === "string") {
+        return new Api.InputQuickReplyShortcut({ shortcut });
+    }
+    if (typeof shortcut === "number") {
+        return new Api.InputQuickReplyShortcutId({ shortcutId: shortcut });
+    }
+    return shortcut;
+}
+
+/** @hidden */
+export async function _toReplyObject(
+    client: TelegramClient,
+    replyTo: MessageIDLike | Api.TypeInputReplyTo | undefined,
+    topMsgId?: number | Api.Message,
+    quote?: {
+        quoteText?: string;
+        quoteEntities?: Api.TypeMessageEntity[];
+        quoteOffset?: number;
+        replyToPeerId?: EntityLike;
+    }
+): Promise<Api.TypeInputReplyTo | undefined> {
+    if (
+        replyTo != undefined &&
+        typeof replyTo === "object" &&
+        (replyTo as any).SUBCLASS_OF_ID === unionId("InputReplyTo")
+    ) {
+        return replyTo as Api.TypeInputReplyTo;
+    }
+    const replyToMsgId =
+        replyTo != undefined
+            ? getMessageId(replyTo as MessageIDLike)
+            : getMessageId(topMsgId);
+    if (replyToMsgId == undefined) {
+        return undefined;
+    }
+    return new Api.InputReplyToMessage({
+        replyToMsgId,
+        topMsgId: replyTo != undefined ? getMessageId(topMsgId) : undefined,
+        quoteText: quote?.quoteText,
+        quoteEntities: quote?.quoteEntities,
+        quoteOffset: quote?.quoteOffset,
+        replyToPeerId: quote?.replyToPeerId
+            ? await client.getInputEntity(quote.replyToPeerId)
+            : undefined,
+    });
+}
+
+/** @hidden */
+export async function _fileToMedia(
+    client: TelegramClient,
+    {
+        file,
+        forceDocument,
+        fileSize,
+        progressCallback,
+        attributes,
+        thumb,
+        voiceNote = false,
+        videoNote = false,
+        supportsStreaming = false,
+        mimeType,
+        asImage,
+        workers,
+        spoiler,
+        ttlSeconds,
+        nosoundVideo,
+        videoCover,
+        videoTimestamp,
+    }: FileToMediaInterface
+): Promise<{
+    fileHandle?: any;
+    media?: Api.TypeInputMedia;
+    image?: boolean;
+}> {
+    if (!file) {
+        return { fileHandle: undefined, media: undefined, image: undefined };
+    }
+    const isImage = utils.isImage(file);
+
+    if (asImage == undefined) {
+        asImage = isImage && !forceDocument;
+    }
+    if (
+        typeof file == "object" &&
+        !Buffer.isBuffer(file) &&
+        !(file instanceof Api.InputFile) &&
+        !(file instanceof Api.InputFileBig) &&
+        !(file instanceof CustomFile) &&
+        !("read" in file)
+    ) {
+        try {
+            return {
+                fileHandle: undefined,
+                media: utils.getInputMedia(file, {
+                    isPhoto: asImage,
+                    attributes: attributes,
+                    forceDocument: forceDocument,
+                    voiceNote: voiceNote,
+                    videoNote: videoNote,
+                    supportsStreaming: supportsStreaming,
+                    spoiler: spoiler,
+                    ttlSeconds: ttlSeconds,
+                    nosoundVideo: nosoundVideo,
+                    videoCover: videoCover,
+                    videoTimestamp: videoTimestamp,
+                }),
+                image: asImage,
+            };
+        } catch (e) {
+            return {
+                fileHandle: undefined,
+                media: undefined,
+                image: isImage,
+            };
+        }
+    }
+    let media;
+    let fileHandle;
+    let createdFile;
+
+    if (file instanceof Api.InputFile || file instanceof Api.InputFileBig) {
+        fileHandle = file;
+    } else if (
+        typeof file == "string" &&
+        (file.startsWith("https://") || file.startsWith("http://"))
+    ) {
+        if (asImage) {
+            media = new Api.InputMediaPhotoExternal({
+                url: file,
+                spoiler: spoiler,
+                ttlSeconds: ttlSeconds,
+            });
+        } else {
+            media = new Api.InputMediaDocumentExternal({
+                url: file,
+                spoiler: spoiler,
+                ttlSeconds: ttlSeconds,
+                videoCover: videoCover,
+                videoTimestamp: videoTimestamp,
+            });
+        }
+    } else if (!(typeof file == "string") || (await fs.lstat(file)).isFile()) {
+        if (typeof file == "string") {
+            createdFile = new CustomFile(
+                path.basename(file),
+                (await fs.stat(file)).size,
+                file
+            );
+        } else if (
+            (typeof File !== "undefined" && file instanceof File) ||
+            file instanceof CustomFile
+        ) {
+            createdFile = file;
+        } else {
+            let name;
+            if ("name" in file) {
+                // @ts-ignore
+                name = file.name;
+            } else {
+                name = "unnamed";
+            }
+            if (Buffer.isBuffer(file)) {
+                createdFile = new CustomFile(name, file.length, "", file);
+            }
+        }
+        if (!createdFile) {
+            throw new Error(
+                `Could not create file from ${JSON.stringify(file)}`
+            );
+        }
+        fileHandle = await uploadFile(client, {
+            file: createdFile,
+            onProgress: progressCallback,
+            workers: workers,
+        });
+    } else {
+        throw new Error(`"Not a valid path nor a url ${file}`);
+    }
+    if (media != undefined) {
+    } else if (fileHandle == undefined) {
+        throw new Error(
+            `Failed to convert ${file} to media. Not an existing file or an HTTP URL`
+        );
+    } else if (asImage) {
+        media = new Api.InputMediaUploadedPhoto({
+            file: fileHandle,
+            spoiler: spoiler,
+            ttlSeconds: ttlSeconds,
+        });
+    } else {
+        // @ts-ignore
+        let res = utils.getAttributes(file, {
+            mimeType: mimeType,
+            attributes: attributes,
+            forceDocument: forceDocument && !isImage,
+            voiceNote: voiceNote,
+            videoNote: videoNote,
+            supportsStreaming: supportsStreaming,
+            thumb: thumb,
+        });
+        attributes = res.attrs;
+        mimeType = res.mimeType;
+
+        let uploadedThumb;
+        if (!thumb) {
+            uploadedThumb = undefined;
+        } else {
+            // todo refactor
+            if (typeof thumb == "string") {
+                uploadedThumb = new CustomFile(
+                    path.basename(thumb),
+                    (await fs.stat(thumb)).size,
+                    thumb
+                );
+            } else if (typeof File !== "undefined" && thumb instanceof File) {
+                uploadedThumb = thumb;
+            } else {
+                let name;
+                if ("name" in thumb) {
+                    name = thumb.name;
+                } else {
+                    name = "unnamed";
+                }
+                if (Buffer.isBuffer(thumb)) {
+                    uploadedThumb = new CustomFile(
+                        name,
+                        thumb.length,
+                        "",
+                        thumb
+                    );
+                }
+            }
+            if (!uploadedThumb) {
+                throw new Error(`Could not create file from ${file}`);
+            }
+            uploadedThumb = await uploadFile(client, {
+                file: uploadedThumb,
+                workers: 1,
+            });
+        }
+        media = new Api.InputMediaUploadedDocument({
+            file: fileHandle,
+            mimeType: mimeType,
+            attributes: attributes,
+            thumb: uploadedThumb,
+            forceFile: forceDocument && !isImage,
+            spoiler: spoiler,
+            ttlSeconds: ttlSeconds,
+            nosoundVideo: nosoundVideo,
+            videoCover: videoCover,
+            videoTimestamp: videoTimestamp,
+        });
+    }
+    return {
+        fileHandle: fileHandle,
+        media: media,
+        image: asImage,
+    };
+}
+
+/** @hidden */
+export async function _sendAlbum(
+    client: TelegramClient,
+    entity: EntityLike,
+    {
+        file,
+        caption,
+        formattingEntities,
+        forceDocument = false,
+        fileSize,
+        clearDraft = false,
+        progressCallback,
+        replyTo,
+        attributes,
+        thumb,
+        parseMode,
+        voiceNote = false,
+        videoNote = false,
+        silent,
+        supportsStreaming = false,
+        scheduleDate,
+        workers,
+        noforwards,
+        commentTo,
+        topMsgId,
+        sendAs,
+        effect,
+        invertMedia,
+        background,
+        updateStickersetsOrder,
+        allowPaidFloodskip,
+        allowPaidStars,
+        quickReplyShortcut,
+        quoteText,
+        quoteEntities,
+        quoteOffset,
+        replyToPeerId,
+        spoiler,
+        ttlSeconds,
+        nosoundVideo,
+        videoCover,
+        videoTimestamp,
+    }: SendFileInterface
+) {
+    entity = await client.getInputEntity(entity);
+    let files = [];
+    if (!Array.isArray(file)) {
+        files = [file];
+    } else {
+        files = file;
+    }
+    if (!Array.isArray(caption)) {
+        if (!caption) {
+            caption = "";
+        }
+        caption = [caption];
+    }
+    const captions: [string, Api.TypeMessageEntity[]][] = [];
+    for (const [i, c] of caption.entries()) {
+        if (i === 0 && formattingEntities) {
+            captions.push([c || "", formattingEntities]);
+        } else {
+            captions.push(await _parseMessageText(client, c, parseMode));
+        }
+    }
+    if (commentTo != undefined) {
+        const discussionData = await client.getCommentData(entity, commentTo);
+        entity = discussionData.entity;
+        replyTo = discussionData.replyTo;
+    }
+    if (!attributes) {
+        attributes = [];
+    }
+
+    let index = 0;
+    const albumFiles = [];
+    for (const file of files) {
+        let { fileHandle, media, image } = await _fileToMedia(client, {
+            file: file,
+            forceDocument: forceDocument,
+            fileSize: fileSize,
+            progressCallback: progressCallback,
+            // @ts-ignore
+            attributes: attributes[index],
+            thumb: thumb,
+            voiceNote: voiceNote,
+            videoNote: videoNote,
+            supportsStreaming: supportsStreaming,
+            workers: workers,
+            spoiler: spoiler,
+            ttlSeconds: ttlSeconds,
+            nosoundVideo: nosoundVideo,
+            videoCover: videoCover,
+            videoTimestamp: videoTimestamp,
+        });
+        index++;
+        if (
+            media instanceof Api.InputMediaUploadedPhoto ||
+            media instanceof Api.InputMediaPhotoExternal
+        ) {
+            const r = await client.invoke(
+                new Api.messages.UploadMedia({
+                    peer: entity,
+                    media,
+                })
+            );
+            if (r instanceof Api.MessageMediaPhoto) {
+                media = getInputMedia(r.photo, {
+                    spoiler: spoiler,
+                    ttlSeconds: ttlSeconds,
+                });
+            }
+        } else if (media instanceof Api.InputMediaUploadedDocument) {
+            const r = await client.invoke(
+                new Api.messages.UploadMedia({
+                    peer: entity,
+                    media,
+                })
+            );
+            if (r instanceof Api.MessageMediaDocument) {
+                media = getInputMedia(r.document, {
+                    spoiler: spoiler,
+                    ttlSeconds: ttlSeconds,
+                    videoCover: videoCover,
+                    videoTimestamp: videoTimestamp,
+                });
+            }
+        }
+        let text = "";
+        let msgEntities: Api.TypeMessageEntity[] = [];
+        if (captions.length) {
+            [text, msgEntities] = captions.shift()!;
+        }
+        albumFiles.push(
+            new Api.InputSingleMedia({
+                media: media!,
+                message: text,
+                entities: msgEntities,
+            })
+        );
+    }
+    const replyObject = await _toReplyObject(client, replyTo, topMsgId, {
+        quoteText,
+        quoteEntities,
+        quoteOffset,
+        replyToPeerId,
+    });
+
+    const result = await client.invoke(
+        new Api.messages.SendMultiMedia({
+            peer: entity,
+            replyTo: replyObject,
+            multiMedia: albumFiles,
+            silent: silent,
+            scheduleDate: scheduleDate,
+            clearDraft: clearDraft,
+            noforwards: noforwards,
+            background: background,
+            updateStickersetsOrder: updateStickersetsOrder,
+            allowPaidFloodskip: allowPaidFloodskip,
+            allowPaidStars: allowPaidStars,
+            quickReplyShortcut: _toQuickReplyShortcut(quickReplyShortcut),
+            sendAs: sendAs
+                ? await client.getInputEntity(sendAs)
+                : undefined,
+            effect: effect,
+            invertMedia: invertMedia,
+        })
+    );
+    const randomIds = albumFiles.map((m) => m.randomId);
+    return client._getResponseMessage(randomIds, result, entity) as Api.Message;
+}
+
+/** @hidden */
+export async function sendFile(
+    client: TelegramClient,
+    entity: EntityLike,
+    {
+        file,
+        caption,
+        forceDocument = false,
+        fileSize,
+        clearDraft = false,
+        progressCallback,
+        replyTo,
+        attributes,
+        thumb,
+        parseMode,
+        formattingEntities,
+        voiceNote = false,
+        videoNote = false,
+        buttons,
+        silent,
+        supportsStreaming = false,
+        scheduleDate,
+        workers,
+        noforwards,
+        commentTo,
+        topMsgId,
+        sendAs,
+        effect,
+        invertMedia,
+        background,
+        updateStickersetsOrder,
+        allowPaidFloodskip,
+        allowPaidStars,
+        scheduleRepeatPeriod,
+        quickReplyShortcut,
+        suggestedPost,
+        quoteText,
+        quoteEntities,
+        quoteOffset,
+        replyToPeerId,
+        spoiler,
+        ttlSeconds,
+        nosoundVideo,
+        videoCover,
+        videoTimestamp,
+    }: SendFileInterface
+) {
+    if (!file) {
+        throw new Error("You need to specify a file");
+    }
+    if (!caption) {
+        caption = "";
+    }
+    entity = await client.getInputEntity(entity);
+    if (commentTo != undefined) {
+        const discussionData = await client.getCommentData(entity, commentTo);
+        entity = discussionData.entity;
+        replyTo = discussionData.replyTo;
+    }
+    if (Array.isArray(file)) {
+        return await _sendAlbum(client, entity, {
+            file: file,
+            caption: caption,
+            formattingEntities: formattingEntities,
+            replyTo: replyTo,
+            parseMode: parseMode,
+            attributes: attributes,
+            silent: silent,
+            scheduleDate: scheduleDate,
+            supportsStreaming: supportsStreaming,
+            clearDraft: clearDraft,
+            forceDocument: forceDocument,
+            noforwards: noforwards,
+            topMsgId: topMsgId,
+            fileSize: fileSize,
+            progressCallback: progressCallback,
+            workers: workers,
+            thumb: thumb,
+            voiceNote: voiceNote,
+            videoNote: videoNote,
+            sendAs: sendAs,
+            effect: effect,
+            invertMedia: invertMedia,
+            background: background,
+            updateStickersetsOrder: updateStickersetsOrder,
+            allowPaidFloodskip: allowPaidFloodskip,
+            allowPaidStars: allowPaidStars,
+            quickReplyShortcut: quickReplyShortcut,
+            quoteText: quoteText,
+            quoteEntities: quoteEntities,
+            quoteOffset: quoteOffset,
+            replyToPeerId: replyToPeerId,
+            spoiler: spoiler,
+            ttlSeconds: ttlSeconds,
+            nosoundVideo: nosoundVideo,
+            videoCover: videoCover,
+            videoTimestamp: videoTimestamp,
+        });
+    }
+    if (Array.isArray(caption)) {
+        caption = caption[0] || "";
+    }
+    let msgEntities;
+    if (formattingEntities != undefined) {
+        msgEntities = formattingEntities;
+    } else {
+        [caption, msgEntities] = await _parseMessageText(
+            client,
+            caption,
+            parseMode
+        );
+    }
+
+    const { fileHandle, media, image } = await _fileToMedia(client, {
+        file: file,
+        forceDocument: forceDocument,
+        fileSize: fileSize,
+        progressCallback: progressCallback,
+        // @ts-ignore
+        attributes: attributes,
+        thumb: thumb,
+        voiceNote: voiceNote,
+        videoNote: videoNote,
+        supportsStreaming: supportsStreaming,
+        workers: workers,
+        spoiler: spoiler,
+        ttlSeconds: ttlSeconds,
+        nosoundVideo: nosoundVideo,
+        videoCover: videoCover,
+        videoTimestamp: videoTimestamp,
+    });
+    if (media == undefined) {
+        throw new Error(`Cannot use ${file} as file.`);
+    }
+    const markup = client.buildReplyMarkup(buttons);
+    const replyObject = await _toReplyObject(client, replyTo, topMsgId, {
+        quoteText,
+        quoteEntities,
+        quoteOffset,
+        replyToPeerId,
+    });
+
+    const request = new Api.messages.SendMedia({
+        peer: entity,
+        media: media,
+        replyTo: replyObject,
+        message: caption,
+        entities: msgEntities,
+        replyMarkup: markup,
+        silent: silent,
+        scheduleDate: scheduleDate,
+        scheduleRepeatPeriod: scheduleRepeatPeriod,
+        clearDraft: clearDraft,
+        noforwards: noforwards,
+        background: background,
+        updateStickersetsOrder: updateStickersetsOrder,
+        allowPaidFloodskip: allowPaidFloodskip,
+        allowPaidStars: allowPaidStars,
+        quickReplyShortcut: _toQuickReplyShortcut(quickReplyShortcut),
+        suggestedPost: suggestedPost,
+        sendAs: sendAs
+            ? await client.getInputEntity(sendAs)
+            : undefined,
+        effect: effect,
+        invertMedia: invertMedia,
+    });
+    const result = await client.invoke(request);
+    return client._getResponseMessage(request, result, entity) as Api.Message;
+}
+
+function fileToBuffer(file: File | CustomFile): Promise<Buffer> | Buffer {
+    if (typeof File !== "undefined" && file instanceof File) {
+        return new Response(file)
+            .arrayBuffer()
+            .then((ab) => Buffer.from(ab));
+    } else if (file instanceof CustomFile) {
+        if (file.buffer != undefined) {
+            return file.buffer;
+        } else {
+            return fs.readFile(file.path) as unknown as Buffer;
+        }
+    } else {
+        throw new Error("Could not create buffer from file " + file);
+    }
+}

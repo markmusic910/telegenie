@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "module": "node16",
+    "target": "es2017",
+    "lib": ["dom", "es7", "ES2019", "ES2020"],
+    "sourceMap": false,
+    "allowJs": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["node"],
+    "incremental": true,
+    "forceConsistentCasingInFileNames": true,
+    "moduleResolution": "node16",
+    "resolveJsonModule": true,
+    "declaration": true,
+    "rootDir": "./teleproto",
+    "outDir": "./dist"
+  },
+  "exclude": ["dist", "teleproto_generator", "node_modules", "teleproto/tl/generated/api.js"],
+  "include": ["teleproto"]
+}

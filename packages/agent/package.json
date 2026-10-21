@@ -1,0 +1,45 @@
+{
+  "name": "@telegenie/agent",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./worker": {
+      "types": "./dist/worker/index.d.ts",
+      "default": "./dist/worker/index.js"
+    },
+    "./worker/create-default-agent-worker": {
+      "types": "./dist/worker/create-default-agent-worker.d.ts",
+      "default": "./dist/worker/create-default-agent-worker.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noCheck",
+    "dev": "tsc -p tsconfig.json --noCheck --watch --preserveWatchOutput",
+    "test": "echo 'No tests yet'"
+  },
+  "dependencies": {
+    "@langchain/core": "1.2.9",
+    "@langchain/langgraph": "1.4.12",
+    "@langchain/langgraph-checkpoint": "1.1.5",
+    "@langchain/openai": "1.5.10",
+    "@telegenie/libs": "workspace:*",
+    "await-to-js": "^3.0.0",
+    "lodash-es": "^4.18.1",
+    "uuid": "^14.0.2",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
+  }
+}

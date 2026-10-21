@@ -1,0 +1,37 @@
+# Dependencies
+/node_modules/
+package-lock.json
+
+# Build and generated output
+/dist/
+/docs/
+/coverage/
+*.tsbuildinfo
+
+# Environment and local config
+.env
+/.vscode/
+/.idea/
+/settings/
+
+# Local runtime data
+*.session
+/usermedia/
+
+# Temporary playground files
+example.js
+example.ts
+example.d.ts
+
+# Legacy browser artifacts
+/browser/
+
+# OS files
+.DS_Store
+.DS_STORE
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*

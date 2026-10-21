@@ -1,0 +1,6 @@
+{
+  "node_version": "20",
+  "graphs": {
+    "telegenie": "./src/agent/graph.ts:graph"
+  }
+}

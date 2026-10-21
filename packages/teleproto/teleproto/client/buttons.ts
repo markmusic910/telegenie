@@ -1,0 +1,103 @@
+import { Api } from "../tl";
+import type { ButtonLike } from "../define";
+import { Button } from "../tl/custom/button";
+import { MessageButton } from "../tl/custom/messageButton";
+import { isArrayLike, unionId } from "../Helpers";
+
+// ButtonMethods
+/**
+ * Converts a flexible button input into a Telegram {@link Api.TypeReplyMarkup}.
+ *
+ * Accepts a single button, a row of buttons, a grid (array of rows), or an existing
+ * `ReplyMarkup` object. Automatically detects whether buttons are inline or normal
+ * and wraps them in the appropriate markup type.
+ *
+ * @param buttons - The button(s) to convert. Can be a {@link ButtonLike}, an array, or a 2D array.
+ * @param inlineOnly - If `true`, forces inline-only mode (throws if normal buttons are found).
+ * @returns The constructed reply markup, or `undefined` if no buttons were provided.
+ * @hidden
+ */
+export function buildReplyMarkup(
+    buttons:
+        | Api.TypeReplyMarkup
+        | undefined
+        | ButtonLike
+        | ButtonLike[]
+        | ButtonLike[][],
+    inlineOnly: boolean = false
+): Api.TypeReplyMarkup | undefined {
+    if (buttons == undefined) {
+        return undefined;
+    }
+    if ("SUBCLASS_OF_ID" in buttons) {
+        if (buttons.SUBCLASS_OF_ID == unionId("ReplyMarkup")) {
+            return buttons as Api.TypeReplyMarkup;
+        }
+    }
+    if (!isArrayLike(buttons)) {
+        buttons = [[buttons as ButtonLike]];
+    } else if (!buttons || !isArrayLike(buttons[0])) {
+        // @ts-ignore
+        buttons = [buttons];
+    }
+    let isInline = false;
+    let isNormal = false;
+    let resize = undefined;
+    const singleUse = false;
+    const selective = false;
+
+    const rows = [];
+    // @ts-ignore
+    for (const row of buttons) {
+        const current = [];
+        for (let button of row) {
+            if (button instanceof Button) {
+                if (button.resize != undefined) {
+                    resize = button.resize;
+                }
+                if (button.singleUse != undefined) {
+                    resize = button.singleUse;
+                }
+                if (button.selective != undefined) {
+                    resize = button.selective;
+                }
+                button = button.button;
+            } else if (button instanceof MessageButton) {
+                button = button.button;
+            }
+            const inline = Button._isInline(button);
+            if (!isInline && inline) {
+                isInline = true;
+            }
+            if (!isNormal && inline) {
+                isNormal = false;
+            }
+            if (button.SUBCLASS_OF_ID == unionId("KeyboardButton")) {
+
+                current.push(button);
+            }
+        }
+        if (current) {
+            rows.push(
+                new Api.KeyboardButtonRow({
+                    buttons: current,
+                })
+            );
+        }
+    }
+    if (inlineOnly && isNormal) {
+        throw new Error("You cannot use non-inline buttons here");
+    } else if (isInline === isNormal && isNormal) {
+        throw new Error("You cannot mix inline with normal buttons");
+    } else if (isInline) {
+        return new Api.ReplyInlineMarkup({
+            rows: rows,
+        });
+    }
+    return new Api.ReplyKeyboardMarkup({
+        rows: rows,
+        resize: resize,
+        singleUse: singleUse,
+        selective: selective,
+    });
+}
