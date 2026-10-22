@@ -1,18 +1,20 @@
 import { getTabId } from '@telegenie/decorators';
-import { MemoryDb } from '../memory/db/memory-db';
-import { EntityRepository } from '../memory/repository/entity.repository';
-import { MemoryRepository } from '../memory/repository/memory.repository';
-import { MemorySourceRepository } from '../memory/repository/memory-source.repository';
-import { CommitmentRepository } from '../memory/repository/commitment.repository';
-import { EmbeddingRepository } from '../memory/repository/embedding.repository';
-import { DialogPresetRepository } from '../agent-db/repository/dialog-preset.repository';
-import { MemoryEngine } from '../memory/engine/memory-engine';
 import { AgentDb } from '../agent-db/agent-db';
 import { cleanupAgentDb } from '../agent-db/cleanup';
-import { Retriever } from '../runtime/retriever';
-import { initNodes } from '../agent/nodes';
+import { AgentMessageRepository } from '../agent-db/repository/agent-message.repository';
+import { AgentRunRepository } from '../agent-db/repository/agent-run.repository';
+import { DialogPresetRepository } from '../agent-db/repository/dialog-preset.repository';
 import { getGraph } from '../agent/graph';
-import { setModelConfig, createChatModel } from '../agent/models';
+import { createChatModel, setModelConfig, type ModelConfig } from '../agent/models';
+import { initNodes } from '../agent/nodes';
+import { MemoryDb } from '../memory/db/memory-db';
+import { MemoryEngine } from '../memory/engine/memory-engine';
+import { CommitmentRepository } from '../memory/repository/commitment.repository';
+import { EmbeddingRepository } from '../memory/repository/embedding.repository';
+import { EntityRepository } from '../memory/repository/entity.repository';
+import { MemorySourceRepository } from '../memory/repository/memory-source.repository';
+import { MemoryRepository } from '../memory/repository/memory.repository';
+import { Retriever } from '../runtime/retriever';
 
 export type AgentWorkerState = {
   memoryDb: MemoryDb;
@@ -23,6 +25,8 @@ export type AgentWorkerState = {
   commitmentRepo: CommitmentRepository;
   embeddingRepo: EmbeddingRepository;
   dialogPresetRepo: DialogPresetRepository;
+  agentRunRepo: AgentRunRepository;
+  agentMessageRepo: AgentMessageRepository;
   memoryEngine: MemoryEngine | undefined; // only initialized after configureModel
   retriever: Retriever;
   accountSlot: string;
@@ -73,6 +77,8 @@ export async function initAgentWorker(
   const commitmentRepo = new CommitmentRepository(memoryDb);
   const embeddingRepo = new EmbeddingRepository(memoryDb);
   const dialogPresetRepo = new DialogPresetRepository(agentDb);
+  const agentRunRepo = new AgentRunRepository(agentDb);
+  const agentMessageRepo = new AgentMessageRepository(agentDb);
 
   const retriever = new Retriever({
     accountSlot,
@@ -97,6 +103,8 @@ export async function initAgentWorker(
     commitmentRepo,
     embeddingRepo,
     dialogPresetRepo,
+    agentRunRepo,
+    agentMessageRepo,
     memoryEngine: undefined,
     retriever,
     accountSlot,
@@ -111,19 +119,27 @@ export async function initAgentWorker(
  * Must be called before processNewMessages or chat RPCs.
  */
 export function configureAgentModel(
-  apiKey: string,
-  model: string,
+  configOrApiKey: string | ModelConfig,
+  model?: string,
 ): void {
   if (!_state) throw new Error('Worker not initialized');
-  setModelConfig({ apiKey, model });
+  if (typeof configOrApiKey === 'string') {
+    setModelConfig({ apiKey: configOrApiKey, model: model ?? 'gpt-4o' });
+  } else {
+    setModelConfig(configOrApiKey);
+  }
 
-  _state.memoryEngine = new MemoryEngine({
-    model: createChatModel(),
-    entityRepository: _state.entityRepo,
-    memoryRepository: _state.memoryRepo,
-    memorySourceRepository: _state.memorySourceRepo,
-    commitmentRepository: _state.commitmentRepo,
-  });
+  try {
+    _state.memoryEngine = new MemoryEngine({
+      model: createChatModel(),
+      entityRepository: _state.entityRepo,
+      memoryRepository: _state.memoryRepo,
+      memorySourceRepository: _state.memorySourceRepo,
+      commitmentRepository: _state.commitmentRepo,
+    });
+  } catch (err) {
+    console.warn('[AgentWorker] MemoryEngine initialization deferred (API key pending):', err);
+  }
 }
 
 export function getWorkerState(): AgentWorkerState {

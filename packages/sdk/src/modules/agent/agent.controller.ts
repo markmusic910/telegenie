@@ -97,23 +97,29 @@ export class AgentController {
 
   /**
    * Run the agent on a user message and return the response string.
-   * Optionally pass peerId to include dialog presets and chat history.
-   * The worker invokes the compiled LangGraph graph.
+   * Supports options ({ peerId, model, presetId }) or legacy peerId string.
+   * Invokes the compiled LangGraph graph with IndexedDB persistence.
    */
   @RequestLog()
   @Method()
-  chat(userMessage: string, peerId?: string): Promise<string> {
-    return this.worker.call('chat', [userMessage, peerId]);
+  chat(
+    userMessage: string,
+    options?: string | import('@telegenie/agent/worker').ChatOptions,
+  ): Promise<import('@telegenie/agent/worker').ChatResult> {
+    return this.worker.call('chat', [userMessage, options]);
   }
 
   /**
    * Configure the LLM used by the agent worker.
-   * Must be called once after connectPageBridge() and before chat().
+   * Can pass { provider, model, apiKey, apiKeys } or (apiKey, model).
    */
   @RequestLog()
   @Method()
-  configureModel(apiKey: string, model: string): Promise<void> {
-    return this.worker.call('configureModel', [apiKey, model]);
+  configureModel(
+    configOrApiKey: string | import('@telegenie/agent/worker').ModelConfig,
+    model?: string,
+  ): Promise<void> {
+    return this.worker.call('configureModel', [configOrApiKey, model]);
   }
 
   /** Get user-configured preset for a specific dialog. */
@@ -135,6 +141,51 @@ export class AgentController {
   @Method()
   deleteDialogPreset(peerId: string) {
     return this.worker.call('deleteDialogPreset', [peerId]);
+  }
+
+  /** Get recent conversation runs stored in IndexedDB. */
+  @RequestLog()
+  @Method()
+  getRecentRuns(limit?: number): Promise<import('@telegenie/agent/worker').AgentRun[]> {
+    return this.worker.call('getRecentRuns', [limit]);
+  }
+
+  /** Get all messages for a specific conversation run from IndexedDB. */
+  @RequestLog()
+  @Method()
+  getRunMessages(runId: string): Promise<import('@telegenie/agent/worker').AgentMessage[]> {
+    return this.worker.call('getRunMessages', [runId]);
+  }
+
+  /** Update the title of an agent run in IndexedDB. */
+  @RequestLog()
+  @Method()
+  updateRunTitle(runId: string, title: string): Promise<void> {
+    return this.worker.call('updateRunTitle', [runId, title]);
+  }
+
+  /** Generate an AI summary title for an agent run and persist it. */
+  @RequestLog()
+  @Method()
+  generateRunTitle(
+    runId: string,
+    options?: { apiKeys?: import('@telegenie/agent/worker').ModelConfig['apiKeys']; model?: string },
+  ): Promise<string> {
+    return this.worker.call('generateRunTitle', [runId, options]);
+  }
+
+  /** Get all available presets (builtin + user custom). */
+  @RequestLog()
+  @Method()
+  getPresets(): Promise<import('@telegenie/agent/worker').AgentPreset[]> {
+    return this.worker.call('getPresets', []);
+  }
+
+  /** Save a custom preset. */
+  @RequestLog()
+  @Method()
+  savePreset(preset: import('@telegenie/agent/worker').AgentPreset): Promise<void> {
+    return this.worker.call('savePreset', [preset]);
   }
 
   /**

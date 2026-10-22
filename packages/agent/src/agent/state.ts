@@ -43,6 +43,18 @@ export const AgentStateAnnotation = Annotation.Root({
     reducer: (_, next) => next,
     default: () => undefined,
   }),
+  model: Annotation<string | undefined>({
+    reducer: (_, next) => next,
+    default: () => undefined,
+  }),
+  presetId: Annotation<string | undefined>({
+    reducer: (_, next) => next,
+    default: () => undefined,
+  }),
+  thought: Annotation<string | undefined>({
+    reducer: (_, next) => next,
+    default: () => undefined,
+  }),
 });
 
 export type AgentGraphState = typeof AgentStateAnnotation.State;

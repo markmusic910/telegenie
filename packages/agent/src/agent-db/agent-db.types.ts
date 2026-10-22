@@ -14,10 +14,14 @@ export type AgentRunStatus = 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
 export interface AgentRun {
   id: string;
   userMessage: string;
+  title?: string;
   status: AgentRunStatus;
   startedAt: number;
   completedAt?: number;
   error?: string;
+  model?: string;
+  presetId?: string;
+  peerId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -35,6 +39,7 @@ export interface AgentMessage {
   runId: string;
   role: AgentMessageRole;
   content: string;
+  thought?: string;
   createdAt: number;
 }
 

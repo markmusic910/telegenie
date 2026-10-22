@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@/lib/components/ui/button';
 import {
   AlarmClock,
   Bot,
@@ -34,7 +35,7 @@ export function GenieSidebar({
   return (
     <div className="flex h-full w-64 shrink-0 flex-col border-r border-border bg-card/60 select-none">
       {/* Top Header */}
-      <div className="flex h-14 shrink-0 items-center justify-between px-4 border-b border-border/60">
+      <div className="flex h-14 shrink-0 items-center justify-between px-4 border-b border-border">
         <div className="flex items-center gap-2">
           <div className="flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
             <Bot className="size-4" />
@@ -43,14 +44,15 @@ export function GenieSidebar({
         </div>
 
         {onClose && (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon-xs"
             onClick={onClose}
-            className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            className="text-muted-foreground hover:text-foreground"
             title="Exit Global View"
           >
             <PanelLeftClose className="size-4" />
-          </button>
+          </Button>
         )}
       </div>
 
@@ -60,7 +62,7 @@ export function GenieSidebar({
           type="button"
           onClick={() => onTabChange('NEW_CHAT')}
           className={`flex items-center gap-3 rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
-            activeTab === 'NEW_CHAT'
+            activeTab === 'NEW_CHAT' && !activeSessionId
               ? 'bg-primary/15 text-primary'
               : 'text-muted-foreground hover:bg-muted hover:text-foreground'
           }`}
@@ -102,7 +104,7 @@ export function GenieSidebar({
           Chats
         </div>
 
-        <div className="flex-1 overflow-y-auto space-y-1">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden space-y-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {historySessions.length === 0 ? (
             <div className="px-3 py-4 text-xs text-muted-foreground/50 text-center">
               No chats yet

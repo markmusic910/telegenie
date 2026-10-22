@@ -29,7 +29,9 @@
     "test": "echo 'No tests yet'"
   },
   "dependencies": {
+    "@langchain/anthropic": "^1.5.13",
     "@langchain/core": "1.2.9",
+    "@langchain/google-genai": "^2.3.4",
     "@langchain/langgraph": "1.4.12",
     "@langchain/langgraph-checkpoint": "1.1.5",
     "@langchain/openai": "1.5.10",

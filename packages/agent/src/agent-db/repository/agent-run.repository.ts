@@ -14,15 +14,36 @@ export class AgentRunRepository {
     return this.db.getAll<AgentRun>(AGENT_STORE.agentRuns);
   }
 
-  async create(userMessage: string): Promise<AgentRun> {
+  async create(
+    userMessage: string,
+    metadata?: { model?: string; presetId?: string; peerId?: string; title?: string },
+  ): Promise<AgentRun> {
     const run: AgentRun = {
       id: `run_${uuidv4()}`,
       userMessage,
+      title: metadata?.title,
       status: 'RUNNING',
       startedAt: Date.now(),
+      model: metadata?.model,
+      presetId: metadata?.presetId,
+      peerId: metadata?.peerId,
     };
     await this.db.put<AgentRun>(AGENT_STORE.agentRuns, run);
     return run;
+  }
+
+  async updateTitle(id: string, title: string): Promise<void> {
+    const run = await this.findById(id);
+    if (!run) return;
+    await this.db.put<AgentRun>(AGENT_STORE.agentRuns, {
+      ...run,
+      title: title.trim(),
+    });
+  }
+
+  async getRecent(limit = 50): Promise<AgentRun[]> {
+    const all = await this.findAll();
+    return all.sort((a, b) => b.startedAt - a.startedAt).slice(0, limit);
   }
 
   async updateStatus(

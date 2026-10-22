@@ -1,4 +1,4 @@
-import type { ChatOpenAI } from '@langchain/openai';
+import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { isMemoryCandidate } from './candidate-detector';
 import { MemoryExtractor } from './memory-extractor';
 import { EntityResolver } from './entity-resolver';
@@ -10,7 +10,7 @@ import type { CommitmentRepository } from '../repository/commitment.repository';
 import type { AgentMessageRecord } from '../../types/agent-message-record';
 
 export type MemoryEngineOptions = {
-  model: ChatOpenAI;
+  model: BaseChatModel;
   entityRepository: EntityRepository;
   memoryRepository: MemoryRepository;
   memorySourceRepository: MemorySourceRepository;

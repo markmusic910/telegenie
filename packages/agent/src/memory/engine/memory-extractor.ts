@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { ChatOpenAI } from '@langchain/openai';
+import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import type { AgentMessageRecord } from '../../types/agent-message-record';
 
 // ---------------------------------------------------------------------------
@@ -59,13 +59,13 @@ If nothing is extractable, return { "candidates": [] }.`;
 // ---------------------------------------------------------------------------
 
 /**
- * Uses ChatOpenAI to extract structured memory candidates from a single message.
+ * Uses BaseChatModel to extract structured memory candidates from a single message.
  *
  * Important: this function only PROPOSES candidates — it never writes to IDB.
  * The MemoryConsolidator decides what to persist after validation + dedup.
  */
 export class MemoryExtractor {
-  constructor(private readonly model: ChatOpenAI) {}
+  constructor(private readonly model: BaseChatModel) {}
 
   async extract(message: AgentMessageRecord): Promise<ExtractionCandidate[]> {
     const userPrompt = `Message (from ${message.out ? 'me' : `user ${message.fromId ?? 'unknown'}`}, date ${new Date(message.date * 1000).toISOString()}):\n\n"${message.message}"`;

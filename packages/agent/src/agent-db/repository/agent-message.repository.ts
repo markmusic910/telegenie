@@ -15,12 +15,18 @@ export class AgentMessageRepository {
     return messages.sort((a, b) => a.createdAt - b.createdAt);
   }
 
-  async insert(runId: string, role: AgentMessageRole, content: string): Promise<AgentMessage> {
+  async insert(
+    runId: string,
+    role: AgentMessageRole,
+    content: string,
+    thought?: string,
+  ): Promise<AgentMessage> {
     const message: AgentMessage = {
       id: `msg_${uuidv4()}`,
       runId,
       role,
       content,
+      thought,
       createdAt: Date.now(),
     };
     await this.db.put<AgentMessage>(AGENT_STORE.agentMessages, message);
