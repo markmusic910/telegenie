@@ -8,6 +8,7 @@ import { extractText } from '../agent/nodes';
 import { presetService } from '../preset/preset.service';
 import { createChatModel, type ModelConfig } from '../agent/models';
 import type { AgentPreset } from '../preset/preset.types';
+import { getLangSmithTracer, getLangSmithConfig } from '../monitoring';
 
 /** Helper to generate and persist a concise AI title for a run. */
 async function generateAndSaveTitle(
@@ -120,6 +121,8 @@ export function createAgentWorkerHandlers(): RpcHandlers<AgentWorkerApi> {
 
       try {
         const graph = getGraph();
+        const tracer = getLangSmithTracer();
+        const lsConfig = getLangSmithConfig();
 
         const result = (await graph.invoke(
           {
@@ -129,7 +132,24 @@ export function createAgentWorkerHandlers(): RpcHandlers<AgentWorkerApi> {
             presetId: opts.presetId,
             runId,
           },
-          { configurable: { thread_id: `thread_${runId}` } },
+          {
+            configurable: { thread_id: `thread_${runId}` },
+            callbacks: tracer ? [tracer] : undefined,
+            metadata: {
+              runId,
+              peerId: opts.peerId,
+              model: opts.model,
+              presetId: opts.presetId,
+              agent_id: lsConfig.agentId,
+              environment: lsConfig.agentEnvironment,
+            },
+            tags: [
+              'telegenie-chat',
+              `agent:${lsConfig.agentId || 'telegenie'}`,
+              `env:${lsConfig.agentEnvironment || 'local'}`,
+              opts.model ? `model:${opts.model}` : '',
+            ].filter(Boolean),
+          },
         )) as {
           messages?: Array<{ content?: string }>;
           thought?: string;

@@ -17,6 +17,7 @@ export type ModelConfig = {
   apiKey?: string;
   apiKeys?: ProviderApiKeys;
   temperature?: number;
+  langsmith?: Partial<import('../monitoring').LangSmithConfig>;
 };
 
 /** Module-level config set via configureModel RPC from the tab on worker startup or switch. */

@@ -8,7 +8,7 @@ import GenieCopilotPanel from '@/components/genie/genie-copilot.panel';
 import DialogConfigContainer from '@/components/main/right-column/dialog-config.container';
 import { useStore } from '@/lib/contexts/sdk.context';
 
-export type RightColumnView = 'COPILOT' | 'DIALOG_CONFIG';
+export type RightColumnView = 'GENIE' | 'DIALOG_CONFIG';
 
 export interface RightColumnContainerProps {
   onClose: () => void;
@@ -18,7 +18,7 @@ export interface RightColumnContainerProps {
 }
 
 /**
- * RightColumnContainer coordinates switching between the in-chat Genie Copilot
+ * RightColumnContainer coordinates switching between the in-chat Genie
  * and the Dialog Config / Settings panel with a smooth motion transition.
  */
 export const RightColumnContainer = observer(function RightColumnContainer({
@@ -27,11 +27,16 @@ export const RightColumnContainer = observer(function RightColumnContainer({
   view: controlledView,
   onViewChange,
 }: RightColumnContainerProps) {
-  const [internalView, setInternalView] = useState<RightColumnView>('COPILOT');
+  const [internalView, setInternalView] = useState<RightColumnView>('GENIE');
   const activeView = controlledView ?? internalView;
 
-  // Allows switching views from within right column
-  void onViewChange;
+  const handleSwitchView = (nextView: RightColumnView) => {
+    if (onViewChange) {
+      onViewChange(nextView);
+    } else {
+      setInternalView(nextView);
+    }
+  };
 
   const globalStore = useStore('global');
   const peerId = globalStore.nav.selectedDialogId;
@@ -39,9 +44,9 @@ export const RightColumnContainer = observer(function RightColumnContainer({
   return (
     <div className="relative h-full w-full overflow-hidden bg-card">
       <AnimatePresence mode="wait" initial={false}>
-        {activeView === 'COPILOT' ? (
+        {activeView === 'GENIE' ? (
           <motion.div
-            key="copilot-view"
+            key="genie-view"
             initial={{ opacity: 0, x: 10 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -10 }}
@@ -52,6 +57,7 @@ export const RightColumnContainer = observer(function RightColumnContainer({
               peerId={peerId}
               onClose={onClose}
               onExpandGlobal={onExpandGlobal}
+              onSwitchToConfig={() => handleSwitchView('DIALOG_CONFIG')}
             />
           </motion.div>
         ) : (

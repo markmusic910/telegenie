@@ -131,33 +131,52 @@ const MessagesContainer = observer(({ onToggleConfig, onOpenGenie }: MessagesCon
   return (
     <div className="relative flex h-full flex-col overflow-hidden">
       <div className="flex h-14 shrink-0 items-center border-b border-border px-4 gap-3">
-        {display && peerId && (
-          <PeerAvatar
-            peerId={peerId}
-            display={display}
-            photo={peer?.photo}
-            className="size-9 text-xs"
-          />
-        )}
-        <div className="flex min-w-0 flex-1 flex-col justify-center">
-          <span className="flex min-w-0 items-baseline gap-1.5 text-sm font-semibold text-foreground leading-tight">
-            <span className="truncate">{display?.name || 'Select a conversation'}</span>
-            {process.env.NODE_ENV === 'development' && peerId ? (
-              <span className="shrink-0 font-mono text-[11px] font-normal text-muted-foreground">
-                {peerId}
-              </span>
-            ) : null}
-          </span>
-          {subtitle && (
-            <span
-              className={cn(
-                'truncate text-xs leading-normal mt-0.5',
-                isOnline ? 'text-primary font-medium' : 'text-muted-foreground',
-              )}
-            >
-              {subtitle}
-            </span>
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={onToggleConfig}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onToggleConfig();
+            }
+          }}
+          className={cn(
+            'flex min-w-0 flex-1 items-center gap-3 select-none rounded-lg p-1.5 -ml-1.5 transition-colors',
+            selectedDialogId
+              ? 'cursor-pointer hover:bg-accent/50 outline-none focus-visible:ring-1 focus-visible:ring-ring'
+              : 'cursor-default',
           )}
+          title={selectedDialogId ? 'View dialog info' : undefined}
+        >
+          {display && peerId && (
+            <PeerAvatar
+              peerId={peerId}
+              display={display}
+              photo={peer?.photo}
+              className="size-9 text-xs shrink-0"
+            />
+          )}
+          <div className="flex min-w-0 flex-1 flex-col justify-center">
+            <span className="flex min-w-0 items-baseline gap-1.5 text-sm font-semibold text-foreground leading-tight">
+              <span className="truncate">{display?.name || 'Select a conversation'}</span>
+              {process.env.NODE_ENV === 'development' && peerId ? (
+                <span className="shrink-0 font-mono text-[11px] font-normal text-muted-foreground">
+                  {peerId}
+                </span>
+              ) : null}
+            </span>
+            {subtitle && (
+              <span
+                className={cn(
+                  'truncate text-xs leading-normal mt-0.5',
+                  isOnline ? 'text-primary font-medium' : 'text-muted-foreground',
+                )}
+              >
+                {subtitle}
+              </span>
+            )}
+          </div>
         </div>
 
         {selectedDialogId ? (
@@ -182,15 +201,16 @@ const MessagesContainer = observer(({ onToggleConfig, onOpenGenie }: MessagesCon
 
         {onOpenGenie && (
           <Button
-            id="open-genie-copilot"
+            id="open-genie"
             variant="ghost"
             size="sm"
             onClick={onOpenGenie}
-            aria-label="Open Genie Copilot"
+            aria-label="Ask TeleGenie"
+            title="Ask TeleGenie"
             className="flex items-center gap-1.5 px-2.5 h-8 text-xs font-medium text-primary hover:bg-primary/10 rounded-lg shrink-0"
           >
             <Bot className="size-4" />
-            <span className="hidden sm:inline">Genie</span>
+            <span className="hidden sm:inline">Ask TeleGenie</span>
           </Button>
         )}
 

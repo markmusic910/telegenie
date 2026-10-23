@@ -5587,12 +5587,26 @@ __metadata:
     "@langchain/langgraph": "npm:1.4.12"
     "@langchain/langgraph-checkpoint": "npm:1.1.5"
     "@langchain/openai": "npm:1.5.10"
+    "@telegenie/config": "workspace:*"
     "@telegenie/libs": "workspace:*"
     await-to-js: "npm:^3.0.0"
+    langsmith: "npm:^0.9.0"
     lodash-es: "npm:^4.18.1"
     typescript: "npm:@typescript/typescript6@^6.0.2"
     uuid: "npm:^14.0.2"
     zod: "npm:^4.4.3"
+  languageName: unknown
+  linkType: soft
+
+"@telegenie/config@workspace:*, @telegenie/config@workspace:packages/config":
+  version: 0.0.0-use.local
+  resolution: "@telegenie/config@workspace:packages/config"
+  dependencies:
+    "@types/jest": "npm:^29.5.1"
+    "@types/node": "npm:^22.13.1"
+    jest: "npm:^29.5.0"
+    ts-jest: "npm:^29.1.0"
+    typescript: "npm:@typescript/typescript6@^6.0.2"
   languageName: unknown
   linkType: soft
 
@@ -5692,6 +5706,7 @@ __metadata:
     "@formkit/auto-animate": "npm:^0.10.0"
     "@opennextjs/cloudflare": "npm:^1.18.0"
     "@tailwindcss/postcss": "npm:^4.1.13"
+    "@telegenie/config": "workspace:*"
     "@telegenie/libs": "workspace:*"
     "@telegenie/sdk": "workspace:*"
     "@types/canvas-confetti": "npm:^1"
@@ -5943,6 +5958,15 @@ __metadata:
   dependencies:
     undici-types: "npm:~5.26.4"
   checksum: 10c0/22ba2bc9f8863101a7e90a56aaeba1eb3ebdc51e847cef4a6d188967ab1acbce9b4f92251372fd0329ecb924bbf610509e122c3dfe346c04dbad04013d4ad7d0
+  languageName: node
+  linkType: hard
+
+"@types/node@npm:^22.13.1":
+  version: 22.20.5
+  resolution: "@types/node@npm:22.20.5"
+  dependencies:
+    undici-types: "npm:~6.21.0"
+  checksum: 10c0/0cf61a89c6a69917ab49f976a6bb11a29e3b348a6ae19f5827ceb91d3ade781faab58dcf3b8fa625f975f5d7536b9166ff94e8250c29272c667164f77c28fa88
   languageName: node
   linkType: hard
 
@@ -11144,7 +11168,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"langsmith@npm:>=0.5.0 <1.0.0":
+"langsmith@npm:>=0.5.0 <1.0.0, langsmith@npm:^0.9.0":
   version: 0.9.0
   resolution: "langsmith@npm:0.9.0"
   dependencies:

@@ -15,6 +15,7 @@ import { EntityRepository } from '../memory/repository/entity.repository';
 import { MemorySourceRepository } from '../memory/repository/memory-source.repository';
 import { MemoryRepository } from '../memory/repository/memory.repository';
 import { Retriever } from '../runtime/retriever';
+import { initLangSmithMonitoring } from '../monitoring';
 
 export type AgentWorkerState = {
   memoryDb: MemoryDb;
@@ -94,6 +95,9 @@ export async function initAgentWorker(
   // Initialize graph singleton (MemorySaver checkpointer)
   getGraph();
 
+  // Initialize LangSmith monitoring if configured
+  initLangSmithMonitoring();
+
   _state = {
     memoryDb,
     agentDb,
@@ -125,8 +129,14 @@ export function configureAgentModel(
   if (!_state) throw new Error('Worker not initialized');
   if (typeof configOrApiKey === 'string') {
     setModelConfig({ apiKey: configOrApiKey, model: model ?? 'gpt-4o' });
+    initLangSmithMonitoring();
   } else {
     setModelConfig(configOrApiKey);
+    if (configOrApiKey.langsmith) {
+      initLangSmithMonitoring(configOrApiKey.langsmith);
+    } else {
+      initLangSmithMonitoring();
+    }
   }
 
   try {

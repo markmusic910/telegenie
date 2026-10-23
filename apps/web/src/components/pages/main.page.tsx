@@ -21,8 +21,8 @@ import RightColumnContainer, {
 const MainPage = observer(() => {
   const configPanelRef = usePanelRef();
   const [isGlobalGenieOpen, setIsGlobalGenieOpen] = useState(false);
-  const [rightColumnView, setRightColumnView] = useState<RightColumnView>('COPILOT');
-  const wasCopilotOpenBeforeGlobal = useRef(false);
+  const [rightColumnView, setRightColumnView] = useState<RightColumnView>('GENIE');
+  const wasGenieOpenBeforeGlobal = useRef(false);
 
   function toggleConfig() {
     const panel = configPanelRef.current;
@@ -31,7 +31,7 @@ const MainPage = observer(() => {
     if (panel.isCollapsed()) {
       setRightColumnView('DIALOG_CONFIG');
       panel.expand();
-    } else if (rightColumnView === 'COPILOT') {
+    } else if (rightColumnView === 'GENIE') {
       setRightColumnView('DIALOG_CONFIG');
     } else {
       panel.collapse();
@@ -43,26 +43,26 @@ const MainPage = observer(() => {
     if (!panel) return;
 
     if (panel.isCollapsed()) {
-      setRightColumnView('COPILOT');
+      setRightColumnView('GENIE');
       panel.expand();
-    } else if (rightColumnView === 'DIALOG_CONFIG') {
-      setRightColumnView('COPILOT');
+    } else if (rightColumnView === 'GENIE') {
+      setRightColumnView('DIALOG_CONFIG');
     } else {
-      panel.collapse();
+      setRightColumnView('GENIE');
     }
   }
 
   function handleExpandGlobal() {
-    wasCopilotOpenBeforeGlobal.current = !configPanelRef.current?.isCollapsed();
+    wasGenieOpenBeforeGlobal.current = !configPanelRef.current?.isCollapsed();
     configPanelRef.current?.collapse();
     setIsGlobalGenieOpen(true);
   }
 
   function handleCloseGlobal() {
     setIsGlobalGenieOpen(false);
-    if (wasCopilotOpenBeforeGlobal.current) {
-      wasCopilotOpenBeforeGlobal.current = false;
-      setRightColumnView('COPILOT');
+    if (wasGenieOpenBeforeGlobal.current) {
+      wasGenieOpenBeforeGlobal.current = false;
+      setRightColumnView('GENIE');
       requestAnimationFrame(() => {
         configPanelRef.current?.expand();
       });

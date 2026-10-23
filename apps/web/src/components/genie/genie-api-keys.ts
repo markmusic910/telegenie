@@ -1,6 +1,18 @@
 import type { LLMProvider } from './genie-models.constants';
-
-const STORAGE_KEY_PREFIX = 'telegenie_ai_key_';
+import {
+  getEnvApiKey,
+  getLangSmithEnvConfig,
+} from '@/env';
+import {
+  AI_KEY_STORAGE_KEY_PREFIX,
+  DEFAULT_LANGSMITH_ENDPOINT,
+  LANGSMITH_STORAGE_KEY,
+  LANGSMITH_ENABLED_STORAGE_KEY,
+  LANGSMITH_ENDPOINT_STORAGE_KEY,
+  isValidLangSmithApiKey,
+  type LangSmithEnvConfig,
+  type LLMProviderName,
+} from '@telegenie/config';
 
 export interface ProviderApiKeys {
   google?: string;
@@ -8,36 +20,10 @@ export interface ProviderApiKeys {
   openai?: string;
 }
 
-/**
- * Retrieve API key defined in environment variables (.env / .env.local).
- * In Next.js client-side code, only NEXT_PUBLIC_* variables are available.
- */
-export function getEnvApiKey(provider: LLMProvider): string {
-  if (provider === 'Google') {
-    return (
-      process.env.NEXT_PUBLIC_GEMINI_API_KEY ||
-      process.env.NEXT_PUBLIC_GOOGLE_API_KEY ||
-      ''
-    ).trim();
-  }
-  if (provider === 'Anthropic') {
-    return (process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY || '').trim();
-  }
-  if (provider === 'OpenAI') {
-    return (process.env.NEXT_PUBLIC_OPENAI_API_KEY || '').trim();
-  }
-  return '';
-}
-
-/** Check if the API key for this provider is supplied via environment variables (.env). */
-export function isApiKeyFromEnv(provider: LLMProvider): boolean {
-  return Boolean(getEnvApiKey(provider));
-}
-
 /** Get raw user-saved key from localStorage. */
 export function getLocalStorageApiKey(provider: LLMProvider): string {
   if (typeof window === 'undefined') return '';
-  return localStorage.getItem(`${STORAGE_KEY_PREFIX}${provider.toLowerCase()}`) || '';
+  return localStorage.getItem(`${AI_KEY_STORAGE_KEY_PREFIX}${provider.toLowerCase()}`) || '';
 }
 
 /** Save API key to localStorage. */
@@ -45,9 +31,9 @@ export function setStoredApiKey(provider: LLMProvider, key: string): void {
   if (typeof window === 'undefined') return;
   const trimmed = key.trim();
   if (trimmed) {
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}${provider.toLowerCase()}`, trimmed);
+    localStorage.setItem(`${AI_KEY_STORAGE_KEY_PREFIX}${provider.toLowerCase()}`, trimmed);
   } else {
-    localStorage.removeItem(`${STORAGE_KEY_PREFIX}${provider.toLowerCase()}`);
+    localStorage.removeItem(`${AI_KEY_STORAGE_KEY_PREFIX}${provider.toLowerCase()}`);
   }
 }
 
@@ -57,14 +43,12 @@ export function setStoredApiKey(provider: LLMProvider, key: string): void {
  */
 export function getStoredApiKey(provider: LLMProvider): string {
   // 1. .env takes precedence
-  const envKey = getEnvApiKey(provider);
+  const envKey = getEnvApiKey(provider as LLMProviderName);
   if (envKey) return envKey;
 
   // 2. Fallback to localStorage
   return getLocalStorageApiKey(provider);
 }
-
-export const getEffectiveApiKey = getStoredApiKey;
 
 /**
  * Get all active API keys, with .env taking precedence over localStorage.
@@ -80,3 +64,81 @@ export function getAllStoredApiKeys(): ProviderApiKeys {
 export function hasApiKeyForProvider(provider: LLMProvider): boolean {
   return Boolean(getStoredApiKey(provider));
 }
+
+// ---------------------------------------------------------------------------
+// LangSmith Observability & Monitoring
+
+/** Check if global LangSmith tracing switch is enabled by user. Default is false (disabled). */
+export function getLocalStorageLangSmithTracingEnabled(): boolean {
+  if (typeof window === 'undefined') return false;
+  return localStorage.getItem(LANGSMITH_ENABLED_STORAGE_KEY) === 'true';
+}
+
+/** Toggle the global LangSmith tracing switch in localStorage. */
+export function setStoredLangSmithTracingEnabled(enabled: boolean): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(LANGSMITH_ENABLED_STORAGE_KEY, enabled ? 'true' : 'false');
+}
+
+export function getLocalStorageLangSmithApiKey(): string {
+  if (typeof window === 'undefined') return '';
+  return localStorage.getItem(LANGSMITH_STORAGE_KEY) || '';
+}
+
+export function setStoredLangSmithApiKey(key: string): void {
+  if (typeof window === 'undefined') return;
+  const trimmed = key.trim();
+  if (trimmed) {
+    localStorage.setItem(LANGSMITH_STORAGE_KEY, trimmed);
+  } else {
+    localStorage.removeItem(LANGSMITH_STORAGE_KEY);
+  }
+}
+
+export function getLocalStorageLangSmithEndpoint(): string {
+  if (typeof window === 'undefined') return '';
+  return localStorage.getItem(LANGSMITH_ENDPOINT_STORAGE_KEY) || '';
+}
+
+export function setStoredLangSmithEndpoint(endpoint: string): void {
+  if (typeof window === 'undefined') return;
+  const trimmed = endpoint.trim();
+  if (trimmed) {
+    localStorage.setItem(LANGSMITH_ENDPOINT_STORAGE_KEY, trimmed);
+  } else {
+    localStorage.removeItem(LANGSMITH_ENDPOINT_STORAGE_KEY);
+  }
+}
+
+export function getEffectiveLangSmithEndpoint(): string {
+  const custom = getLocalStorageLangSmithEndpoint();
+  if (custom) return custom;
+  return getLangSmithEnvConfig().endpoint || DEFAULT_LANGSMITH_ENDPOINT;
+}
+
+export function getEffectiveLangSmithApiKey(): string {
+  const envConfig = getLangSmithEnvConfig();
+  if (isValidLangSmithApiKey(envConfig.apiKey)) {
+    return envConfig.apiKey;
+  }
+  return getLocalStorageLangSmithApiKey();
+}
+
+/**
+ * Returns effective LangSmith config for Genie Agent chat.
+ * Default is disabled unless the user explicitly turns on the global switch.
+ */
+export function getEffectiveLangSmithConfig(): LangSmithEnvConfig {
+  const envConfig = getLangSmithEnvConfig();
+  const tracing = getLocalStorageLangSmithTracingEnabled();
+  const endpoint = getEffectiveLangSmithEndpoint();
+  const effectiveKey = getEffectiveLangSmithApiKey();
+
+  return {
+    ...envConfig,
+    tracing,
+    endpoint,
+    apiKey: effectiveKey,
+  };
+}
+

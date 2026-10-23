@@ -11,6 +11,7 @@ TeleGenie/
 ├── apps/
 │   └── web/              # Next.js 16 application
 ├── packages/
+│   ├── config/           # Shared constants, environment schema & multi-platform loader
 │   ├── sdk/              # TeleGenie SDK (orchestration, MobX stores, modules)
 │   ├── libs/             # Shared foundation (worker-rpc, Telegram worker)
 │   ├── sw/               # Service Worker package
@@ -18,6 +19,11 @@ TeleGenie/
 │   └── teleproto/        # Telegram protocol helpers
 └── package.json
 ```
+
+### Imports & Re-exports Convention
+
+- **Do not re-export:** Do not create intermediate pass-through re-exports, alias constants, or wrapper functions across files or packages.
+- Always import canonical types, constants, utilities, and configurations directly from their owning package or source module (e.g. import shared constants and schemas directly from `@telegenie/config`, not via intermediate re-exports).
 
 ### UI component organization (best practice)
 

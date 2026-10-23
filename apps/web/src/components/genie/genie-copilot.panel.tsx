@@ -12,8 +12,8 @@ import {
   ChevronDown,
   ChevronRight,
   Copy,
-  KeyRound,
   Maximize2,
+  Settings,
   SquarePen,
   X,
 } from 'lucide-react';
@@ -24,9 +24,10 @@ import {
   DEFAULT_MODEL_ID,
   MODEL_PROVIDERS,
   SUPPORTED_MODELS,
+  getModelProvider,
 } from '@/components/genie/genie-models.constants';
 import { useGenieRuntime } from '@/components/genie/genie-runtime.adapter';
-import GenieApiKeyDialog from '@/components/genie/genie-api-key.dialog';
+import GenieConfigDialog from '@/components/genie/genie-config.dialog';
 import { Button } from '@/lib/components/ui/button';
 import { useDialogPeer } from '@/lib/contexts/sdk.context';
 import { fallbackPeerDisplay } from '@telegenie/sdk';
@@ -36,6 +37,7 @@ export interface GenieCopilotPanelProps {
   peerId?: string;
   onClose?: () => void;
   onExpandGlobal?: () => void;
+  onSwitchToConfig?: () => void;
 }
 
 function safeExtractReasoningText(content: unknown): string {
@@ -93,6 +95,7 @@ export const GenieCopilotPanel = observer(function GenieCopilotPanel({
   peerId,
   onClose,
   onExpandGlobal,
+  onSwitchToConfig,
 }: GenieCopilotPanelProps) {
   // Reactively track dialog context
   const [clearedPeerId, setClearedPeerId] = useState<string | null>(null);
@@ -100,7 +103,9 @@ export const GenieCopilotPanel = observer(function GenieCopilotPanel({
 
   const [selectedModel, setSelectedModel] = useState<string>(DEFAULT_MODEL_ID);
   const [selectedPreset, setSelectedPreset] = useState<string>('');
-  const [isKeyDialogOpen, setIsKeyDialogOpen] = useState(false);
+  const [isConfigDialogOpen, setIsConfigDialogOpen] = useState(false);
+
+  const [sessionKey, setSessionKey] = useState(0);
 
   const currentModelName =
     SUPPORTED_MODELS.find((m) => m.id === selectedModel || m.name === selectedModel)?.name ??
@@ -122,35 +127,37 @@ export const GenieCopilotPanel = observer(function GenieCopilotPanel({
   });
 
   return (
-    <AssistantRuntimeProvider runtime={runtime}>
+    <AssistantRuntimeProvider key={sessionKey} runtime={runtime}>
       <div className="flex h-full w-full flex-col overflow-hidden bg-card text-card-foreground">
         {/* Top Header */}
         <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4">
-          <div className="flex items-center gap-2">
-            <div className="flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <Bot className="size-4" />
-            </div>
-            <span className="font-semibold text-sm">Genie</span>
+          <div className="flex items-center gap-2 min-w-0">
+            <span
+              className="font-semibold text-sm truncate max-w-[200px]"
+              title={peerName || 'Genie'}
+            >
+              {peerName || 'Genie'}
+            </span>
           </div>
 
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
               size="icon"
-              className="size-8 text-muted-foreground hover:text-foreground"
-              title="API Keys / Settings"
-              onClick={() => setIsKeyDialogOpen(true)}
+              className="size-8 text-muted-foreground hover:text-foreground cursor-pointer"
+              title="Settings"
+              onClick={() => setIsConfigDialogOpen(true)}
             >
-              <KeyRound className="size-4" />
+              <Settings className="size-4" />
             </Button>
 
             <Button
               variant="ghost"
               size="icon"
-              className="size-8 text-muted-foreground hover:text-foreground"
+              className="size-8 text-muted-foreground hover:text-foreground cursor-pointer"
               title="New Chat"
               onClick={() => {
-                window.location.reload();
+                setSessionKey((prev) => prev + 1);
               }}
             >
               <SquarePen className="size-4" />
@@ -168,17 +175,27 @@ export const GenieCopilotPanel = observer(function GenieCopilotPanel({
               </Button>
             )}
 
-            {onClose && (
+            {onSwitchToConfig ? (
               <Button
                 variant="ghost"
                 size="icon"
                 className="size-8 text-muted-foreground hover:text-foreground"
-                title="Close Copilot"
+                title="Switch to Dialog Info"
+                onClick={onSwitchToConfig}
+              >
+                <X className="size-4" />
+              </Button>
+            ) : onClose ? (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8 text-muted-foreground hover:text-foreground"
+                title="Close Genie"
                 onClick={onClose}
               >
                 <X className="size-4" />
               </Button>
-            )}
+            ) : null}
           </div>
         </div>
 
@@ -245,9 +262,10 @@ export const GenieCopilotPanel = observer(function GenieCopilotPanel({
             {/* Composer Box */}
             <ComposerPrimitive.Root className="relative flex flex-col rounded-xl border border-border bg-background focus-within:border-primary/50 transition-colors shadow-sm">
               <ComposerPrimitive.Input
-                placeholder="Continue the conversation..."
-                rows={2}
-                className="w-full resize-none bg-transparent px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none"
+                placeholder="Ask TeleGenie..."
+                minRows={2}
+                maxRows={5}
+                className="w-full resize-none bg-transparent px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none max-h-28 overflow-y-auto"
               />
 
               {/* Controls bar */}
@@ -314,8 +332,13 @@ export const GenieCopilotPanel = observer(function GenieCopilotPanel({
           </div>
         </ThreadPrimitive.Root>
 
-        {/* API Key Modal Dialog */}
-        <GenieApiKeyDialog open={isKeyDialogOpen} onOpenChange={setIsKeyDialogOpen} />
+        {/* Configuration Modal Dialog */}
+        <GenieConfigDialog
+          open={isConfigDialogOpen}
+          onOpenChange={setIsConfigDialogOpen}
+          activeProvider={getModelProvider(selectedModel)}
+          activeModel={selectedModel}
+        />
       </div>
     </AssistantRuntimeProvider>
   );

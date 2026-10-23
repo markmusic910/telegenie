@@ -12,7 +12,6 @@ import {
   ChevronDown,
   ChevronRight,
   Copy,
-  KeyRound,
   Pencil,
   Plus,
   RefreshCw,
@@ -30,12 +29,16 @@ import {
   SUPPORTED_MODELS,
   getModelProvider,
 } from '@/components/genie/genie-models.constants';
-import { getAllStoredApiKeys, hasApiKeyForProvider } from '@/components/genie/genie-api-keys';
+import {
+  getAllStoredApiKeys,
+  hasApiKeyForProvider,
+  getEffectiveLangSmithConfig,
+} from '@/components/genie/genie-api-keys';
 import { useGenieRuntime } from '@/components/genie/genie-runtime.adapter';
 import GenieScheduledView from '@/components/genie/genie-scheduled.view';
 import GenieSearchView from '@/components/genie/genie-search.view';
 import GenieSidebar, { type GenieSidebarTab } from '@/components/genie/genie-sidebar';
-import GenieApiKeyDialog from '@/components/genie/genie-api-key.dialog';
+import GenieConfigDialog from '@/components/genie/genie-config.dialog';
 import { useDialogPeer, useSDK, useStore } from '@/lib/contexts/sdk.context';
 import { fallbackPeerDisplay } from '@telegenie/sdk';
 import type { AgentMessage, AgentPreset } from '@telegenie/agent/worker';
@@ -222,6 +225,7 @@ export const GenieGlobalContainer = observer(function GenieGlobalContainer({
         provider,
         model: currentModelOption.id,
         apiKeys,
+        langsmith: getEffectiveLangSmithConfig(),
       });
       await sdk.agent.generateRunTitle(activeSessionId, {
         apiKeys,
@@ -235,7 +239,7 @@ export const GenieGlobalContainer = observer(function GenieGlobalContainer({
     }
   };
 
-  // Eagerly sync API keys and active model to agent worker on mount & model switch
+  // Eagerly sync API keys, LangSmith config, and active model to agent worker on mount & model switch
   useEffect(() => {
     const apiKeys = getAllStoredApiKeys();
     const provider = getModelProvider(currentModelOption.id);
@@ -244,6 +248,7 @@ export const GenieGlobalContainer = observer(function GenieGlobalContainer({
         provider,
         model: currentModelOption.id,
         apiKeys,
+        langsmith: getEffectiveLangSmithConfig(),
       })
       .catch((err) => {
         console.warn('Failed to configure agent model on mount:', err);
@@ -342,6 +347,7 @@ export const GenieGlobalContainer = observer(function GenieGlobalContainer({
           provider,
           model: currentModelOption.id,
           apiKeys: getAllStoredApiKeys(),
+          langsmith: getEffectiveLangSmithConfig(),
         });
       }
 
@@ -505,17 +511,6 @@ export const GenieGlobalContainer = observer(function GenieGlobalContainer({
           </div>
 
           <div className="flex items-center gap-1">
-            {/* Configure API Keys */}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setIsSettingsOpen(true)}
-              className="size-8 text-muted-foreground hover:text-foreground cursor-pointer"
-              title="Configure API Keys"
-            >
-              <KeyRound className="size-4" />
-            </Button>
-
             {/* Exit / Return to right column view button */}
             {onClose && (
               <Button
@@ -567,7 +562,7 @@ export const GenieGlobalContainer = observer(function GenieGlobalContainer({
                       void handleSendInSession();
                     }
                   }}
-                  placeholder="Continue the conversation..."
+                  placeholder="Ask TeleGenie..."
                   className="flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground focus:outline-none"
                   disabled={isSendingInSession}
                 />
@@ -629,7 +624,7 @@ export const GenieGlobalContainer = observer(function GenieGlobalContainer({
                       Genie
                     </h1>
                     <p className="text-xs text-muted-foreground mt-1 mb-8">
-                      The AI Copilot for Your Telegram Universe.
+                      Ask TeleGenie anything in your Telegram Universe.
                     </p>
 
                     {/* Context Pill (Reflects currently selected dialog) */}
@@ -655,7 +650,7 @@ export const GenieGlobalContainer = observer(function GenieGlobalContainer({
                     {/* Composer Card */}
                     <ComposerPrimitive.Root className="w-full flex flex-col rounded-2xl border border-border bg-card p-2 shadow-sm focus-within:border-primary/50 transition-colors mb-6">
                       <ComposerPrimitive.Input
-                        placeholder="Ask anything..."
+                        placeholder="Ask TeleGenie..."
                         rows={3}
                         className="w-full resize-none bg-transparent px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none"
                       />
@@ -776,7 +771,7 @@ export const GenieGlobalContainer = observer(function GenieGlobalContainer({
                 <div className="shrink-0 border-t border-border p-4 bg-background max-w-3xl mx-auto w-full">
                   <ComposerPrimitive.Root className="flex flex-col rounded-xl border border-border bg-card p-2 focus-within:border-primary/50 transition-colors shadow-sm">
                     <ComposerPrimitive.Input
-                      placeholder="Continue the conversation..."
+                      placeholder="Ask TeleGenie..."
                       rows={2}
                       className="w-full resize-none bg-transparent px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none"
                     />
@@ -807,11 +802,12 @@ export const GenieGlobalContainer = observer(function GenieGlobalContainer({
         )}
       </div>
 
-      {/* API Key Modal */}
-      <GenieApiKeyDialog
+      {/* Configuration Modal */}
+      <GenieConfigDialog
         open={isSettingsOpen}
         onOpenChange={setIsSettingsOpen}
         activeProvider={activeProvider}
+        activeModel={currentModelOption.id}
       />
     </div>
   );

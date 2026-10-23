@@ -13,9 +13,9 @@
     "yarn": ">=4.18.0"
   },
   "scripts": {
-    "dev": "yarn build:packages && concurrently -n decorators,libs,agent,sw,sw-bundle,sdk,web -c red,green,white,cyan,blue,yellow,magenta \"yarn workspace @telegenie/decorators dev\" \"yarn workspace @telegenie/libs dev\" \"yarn workspace @telegenie/agent dev\" \"yarn workspace @telegenie/sw dev\" \"yarn workspace @telegenie/sw dev:bundle\" \"yarn workspace @telegenie/sdk dev\" \"yarn workspace @telegenie/web dev\"",
+    "dev": "yarn build:packages && concurrently -n decorators,config,libs,agent,sw,sw-bundle,sdk,web -c red,magenta,green,white,cyan,blue,yellow,magenta \"yarn workspace @telegenie/decorators dev\" \"yarn workspace @telegenie/config dev\" \"yarn workspace @telegenie/libs dev\" \"yarn workspace @telegenie/agent dev\" \"yarn workspace @telegenie/sw dev\" \"yarn workspace @telegenie/sw dev:bundle\" \"yarn workspace @telegenie/sdk dev\" \"yarn workspace @telegenie/web dev\"",
     "build": "yarn build:packages && yarn workspace @telegenie/sw build:bundle && yarn workspace @telegenie/web build",
-    "build:packages": "yarn workspace @telegenie/teleproto build && yarn workspace @telegenie/decorators build && yarn workspace @telegenie/libs build && yarn workspace @telegenie/agent build && yarn workspace @telegenie/sw build && yarn workspace @telegenie/sdk build",
+    "build:packages": "yarn workspace @telegenie/teleproto build && yarn workspace @telegenie/decorators build && yarn workspace @telegenie/config build && yarn workspace @telegenie/libs build && yarn workspace @telegenie/agent build && yarn workspace @telegenie/sw build && yarn workspace @telegenie/sdk build",
     "build:sw": "yarn workspace @telegenie/sw build && yarn workspace @telegenie/sw build:bundle",
     "start": "yarn workspace @telegenie/web start",
     "lint": "yarn workspace @telegenie/web lint",

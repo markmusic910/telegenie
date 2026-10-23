@@ -24,6 +24,10 @@
 - `apps/web/src/components/` — feature modules and composers that wire stores and layout (`dialog.container.tsx`, `dialog.item.tsx`, `auth.form.tsx`, `app.initializer.tsx`).
 - `apps/web/src/components/pages/` — route page components only. See Next.js Page Extraction.
 
+## Imports, Re-exports, and Canonical Sources
+- **Do not re-export:** Do not create intermediate re-exports, pass-through exports, alias constants, or wrapper functions across files or packages.
+- Always import canonical types, constants, utilities, and configurations directly from their owning package or source module (e.g. import shared constants/schemas directly from `@telegenie/config`, not via `@/env`, `@/constants`, or `@telegenie/agent`).
+
 ## UI vs SDK state
 
 UI (`apps/web`) may **observe** MobX stores; it must **not** call slice or entity mutators. All writes to `globalStore` (nav, dialogs, auth, …) and entity stores go through `useSDK()` controller methods (`sdk.message.*`, `sdk.dialogFilter.*`, `sdk.auth.*`, …).

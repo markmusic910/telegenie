@@ -4,7 +4,11 @@ import { useSDK } from '@/lib/contexts/sdk.context';
 import type { ChatModelAdapter, ChatModelRunOptions, ChatModelRunResult } from '@assistant-ui/react';
 import { useLocalRuntime } from '@assistant-ui/react';
 import { useMemo, useRef } from 'react';
-import { getAllStoredApiKeys, hasApiKeyForProvider } from './genie-api-keys';
+import {
+  getAllStoredApiKeys,
+  hasApiKeyForProvider,
+  getEffectiveLangSmithConfig,
+} from './genie-api-keys';
 import { DEFAULT_MODEL_ID, getModelProvider } from './genie-models.constants';
 
 export type GenieRuntimeOptions = {
@@ -84,6 +88,7 @@ export function useGenieRuntime({
             provider,
             model: activeModel,
             apiKeys,
+            langsmith: getEffectiveLangSmithConfig(),
           });
         } catch (err) {
           console.warn('[GenieRuntime] Failed to configure model:', err);
@@ -160,14 +165,14 @@ export function useGenieRuntime({
         const resultStr =
           typeof finalResult === 'string'
             ? finalResult
-            : finalResult && typeof finalResult === 'object' && 'text' in (finalResult as Record<string, unknown>)
-              ? String((finalResult as Record<string, unknown>).text)
+            : finalResult && typeof finalResult === 'object' && 'text' in (finalResult as unknown as Record<string, unknown>)
+              ? String((finalResult as unknown as Record<string, unknown>).text)
               : finalResult
                 ? JSON.stringify(finalResult)
                 : '';
         const thoughtStr =
-          finalResult && typeof finalResult === 'object' && 'thought' in (finalResult as Record<string, unknown>)
-            ? String((finalResult as Record<string, unknown>).thought || '')
+          finalResult && typeof finalResult === 'object' && 'thought' in (finalResult as unknown as Record<string, unknown>)
+            ? String((finalResult as unknown as Record<string, unknown>).thought || '')
             : '';
         const finalText = accumulated || resultStr;
 
