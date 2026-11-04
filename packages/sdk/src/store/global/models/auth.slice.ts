@@ -1,4 +1,9 @@
 import { toJS } from 'mobx';
+import {
+  BACKEND_BOT_USERNAME,
+  type BackendAuthStatus,
+  type BackendUserProfile,
+} from '@telegenie/config';
 import type { UserEntity } from '../../types';
 import { GlobalStoreSlice } from '../global-store.slice';
 
@@ -15,10 +20,46 @@ export class AuthSlice extends GlobalStoreSlice {
   authPhoneNumber = '';
   authPhoneCodeHash = '';
 
+  backendToken: string | null = null;
+  backendUserProfile: BackendUserProfile | null = null;
+  backendAuthStatus: BackendAuthStatus = 'idle';
+  backendAuthError: string | null = null;
+  backendBotUsername: string = BACKEND_BOT_USERNAME;
+  backendChallengeNonce: string | null = null;
+
   constructor() {
     super();
     this.observe();
   }
+
+  setBackendAuthStatus = (status: BackendAuthStatus) => {
+    this.backendAuthStatus = status;
+  };
+
+  setBackendToken = (token: string | null) => {
+    this.backendToken = token;
+  };
+
+  setBackendUserProfile = (profile: BackendUserProfile | null) => {
+    this.backendUserProfile = profile;
+  };
+
+  setBackendAuthError = (error: string | null) => {
+    this.backendAuthError = error;
+  };
+
+  setBackendChallenge = (nonce: string | null, botUsername = BACKEND_BOT_USERNAME) => {
+    this.backendChallengeNonce = nonce;
+    this.backendBotUsername = botUsername;
+  };
+
+  resetBackendAuth = () => {
+    this.backendToken = null;
+    this.backendUserProfile = null;
+    this.backendAuthStatus = 'idle';
+    this.backendAuthError = null;
+    this.backendChallengeNonce = null;
+  };
 
   setAuthStep = (step: AuthStep) => {
     this.authStep = step;
@@ -76,6 +117,12 @@ export class AuthSlice extends GlobalStoreSlice {
       authIsCodeViaApp: this.authIsCodeViaApp,
       authPhoneNumber: this.authPhoneNumber,
       authPhoneCodeHash: this.authPhoneCodeHash,
+      backendToken: this.backendToken,
+      backendUserProfile: toJS(this.backendUserProfile),
+      backendAuthStatus: this.backendAuthStatus,
+      backendAuthError: this.backendAuthError,
+      backendBotUsername: this.backendBotUsername,
+      backendChallengeNonce: this.backendChallengeNonce,
     };
   }
 }

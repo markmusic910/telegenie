@@ -10,8 +10,8 @@ import {
   createLazyTelegramWorkerClient,
   type TelegramWorkerClient,
 } from '@telegenie/libs/foundation/telegram/worker';
-import type { FoundationDebugStore } from '@telegenie/libs/foundation/telegram/worker/telegram.api';
 import { createDefaultTelegramWorker } from '@telegenie/libs/foundation/telegram/worker/create-default-telegram-worker';
+import type { FoundationDebugStore } from '@telegenie/libs/foundation/telegram/worker/telegram.api';
 import { reaction, runInAction, type IReactionDisposer } from 'mobx';
 import { AgentController } from './modules/agent/agent.controller';
 import { AuthController } from './modules/auth/auth.controller';
@@ -22,10 +22,10 @@ import { DialogFilterController } from './modules/dialog-filter/dialog-filter.co
 import { DialogController } from './modules/dialog/dialog.controller';
 import { EncryptedChatController } from './modules/encrypted-chat/encrypted-chat.controller';
 import { MessageDraftController } from './modules/message/message-draft.controller';
-import { MessageSelectController } from './modules/message/message-select.controller';
 import { MessageLoadController } from './modules/message/message-load.controller';
 import { MessageReactionController } from './modules/message/message-reaction.controller';
 import { MessageReadController } from './modules/message/message-read.controller';
+import { MessageSelectController } from './modules/message/message-select.controller';
 import { MessageSendController } from './modules/message/message-send.controller';
 import { StickerController } from './modules/sticker/sticker.controller';
 import { SwController } from './modules/sw/sw.controller';
@@ -33,11 +33,6 @@ import { TabLeaderElection } from './modules/tab-leader/tab-leader-election';
 import { UpdatesController } from './modules/updates/updates.controller';
 import { UserController } from './modules/user/user.controller';
 import { GlobalStore, StoreManager } from './store';
-import type {
-  EntityStoreView,
-  GlobalStoreView,
-  StoreManagerView,
-} from './store/store.view';
 import { EntityDataProvider } from './store/entity/entity.data-provider';
 import EntityStore from './store/entity/entity.store';
 import { ChannelFull } from './store/entity/models/channel-full.model';
@@ -51,16 +46,21 @@ import { EncryptedChat } from './store/entity/models/encrypted-chat.model';
 import { Message } from './store/entity/models/message.model';
 import { UserFull } from './store/entity/models/user-full.model';
 import { User } from './store/entity/models/user.model';
-import { SDK_CACHE_STORE, messageCacheKey } from './store/persist/constants';
+import { messageCacheKey, SDK_CACHE_STORE } from './store/persist/constants';
 import { StoreCache } from './store/persist/store.cache';
+import type {
+  EntityStoreView,
+  GlobalStoreView,
+  StoreManagerView,
+} from './store/store.view';
 import {
   MODEL_TYPE,
   type ChannelEntity,
   type ChannelFullEntity,
   type ChatEntity,
   type ChatFullEntity,
-  type DialogEntity,
   type CustomEmojiDocumentEntity,
+  type DialogEntity,
   type DialogFilterEntity,
   type EncryptedChatEntity,
   type Entity,
@@ -75,6 +75,10 @@ export type TeleGenieSDKOptions = {
   debug?: boolean;
   /** Optional Worker client factory override (tests). */
   createWorkerClient?: () => TelegramWorkerClient;
+  /** Backend API base URL. */
+  apiBaseUrl?: string;
+  /** Backend bot username. */
+  backendBotUsername?: string;
 };
 
 export type TeleGenieSDKInitOptions = TelegramCredentials & {
@@ -82,6 +86,10 @@ export type TeleGenieSDKInitOptions = TelegramCredentials & {
   restoreSession?: boolean;
   /** Account slot for LocalDb + SDK StoreCache. Defaults to `default`. */
   accountSlot?: string;
+  /** Backend API base URL. */
+  apiBaseUrl?: string;
+  /** Backend bot username. */
+  backendBotUsername?: string;
 };
 
 const MESSAGE_STORE_SUFFIX = '-message';
@@ -152,6 +160,8 @@ export class TeleGenieSDK {
       debug: this.debug,
       globalStore: this.globalStore,
       worker: this.worker,
+      apiBaseUrl: options.apiBaseUrl,
+      backendBotUsername: options.backendBotUsername,
       onAuthSuccess: () => this.onAuthSuccess(),
     });
     this.chat = new ChatController({ sm: this.store, debug: this.debug, worker: this.worker });
@@ -262,6 +272,8 @@ export class TeleGenieSDK {
     this.agent = new AgentController({
       getTabId: () => this.tabLeader.tabId,
       telegramIsAuthorized: () => this.worker.call('auth.isAuthorized', []),
+      getBackendBaseUrl: () => this.auth.getBackendBaseUrl(),
+      getBackendToken: () => this.auth.getBackendToken(),
       updateUiState: (payload) => {
         if (typeof payload.isLoading === 'boolean') {
           this.globalStore.leader.setLoading(payload.isLoading);
@@ -385,7 +397,19 @@ export class TeleGenieSDK {
    * subscribe to LocalDb peer changes, then optionally restore the auth session.
    */
   async init(options: TeleGenieSDKInitOptions): Promise<this> {
-    const { restoreSession = true, accountSlot = 'default', ...credentials } = options;
+    const {
+      restoreSession = true,
+      accountSlot = 'default',
+      apiBaseUrl,
+      backendBotUsername,
+      ...credentials
+    } = options;
+    if (apiBaseUrl) {
+      this.auth.setApiBaseUrl(apiBaseUrl);
+    }
+    if (backendBotUsername) {
+      this.auth.setBackendBotUsername(backendBotUsername);
+    }
 
     this.sw.init();
 
@@ -462,6 +486,14 @@ export class TeleGenieSDK {
     } catch (err) {
       if (this.debug) {
         console.warn('[TeleGenieSDK] getDialogFilters failed', err);
+      }
+    }
+    // Authenticate with TeleGenie Cloud backend to synchronize JWT and AI credit balance
+    try {
+      void this.auth.authenticateBackend();
+    } catch (err) {
+      if (this.debug) {
+        console.warn('[TeleGenieSDK] authenticateBackend failed', err);
       }
     }
   }
@@ -817,7 +849,6 @@ export class TeleGenieSDK {
 }
 
 function wrapWorkerWithLogging(worker: TelegramWorkerClient): TelegramWorkerClient {
-  // @ts-expect-error ~~~
   if (process.env.NODE_ENV === 'production') {
     return worker;
   }

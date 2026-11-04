@@ -11,13 +11,19 @@ export interface ProviderApiKeys {
   openai?: string;
 }
 
+export interface ProxyConfig {
+  baseUrl: string;
+  token?: string;
+}
+
 export type ModelConfig = {
   provider?: LLMProvider;
   model: string;
   apiKey?: string;
   apiKeys?: ProviderApiKeys;
   temperature?: number;
-  langsmith?: Partial<import('../monitoring').LangSmithConfig>;
+  proxy?: ProxyConfig;
+  traceId?: string;
 };
 
 /** Module-level config set via configureModel RPC from the tab on worker startup or switch. */
@@ -79,23 +85,78 @@ export function createChatModel(override?: Partial<ModelConfig>): BaseChatModel 
 
   const provider = targetProvider;
   const apiKey = resolveApiKey(merged, provider);
+  const isBYOK = Boolean(apiKey);
+  const proxy = merged.proxy;
 
-  if (!apiKey) {
+  if (!isBYOK && (!proxy || !proxy.baseUrl)) {
     throw new Error(
-      `API key not configured for provider '${provider}' (model '${merged.model}'). Please set your ${provider} API key.`,
+      `No API key configured for provider '${provider}' (model '${merged.model}') and TeleGenie Cloud AI proxy is not available. Please configure your ${provider} API key or connect to TeleGenie Cloud.`,
     );
   }
 
   const temperature = merged.temperature ?? 0.7;
 
+  // BYOK mode: directly call LLM provider APIs
+  if (isBYOK && apiKey) {
+    switch (provider) {
+      case 'Google': {
+        // Map user-facing model ID to Google Generative AI API model identifier
+        const googleModel =
+          merged.model === 'gemini-3.8' ? 'gemini-3.8-flash' : merged.model;
+        return new ChatGoogleGenerativeAI({
+          apiKey,
+          model: googleModel,
+          temperature,
+        });
+      }
+
+      case 'Anthropic': {
+        let anthropicModel = merged.model;
+        if (merged.model === 'claude-5.5-sonnet' || merged.model === 'claude-sonnet-5-5') {
+          anthropicModel = 'claude-sonnet-5-5';
+        } else if (merged.model === 'claude-5.5-haiku' || merged.model === 'claude-haiku-5-5') {
+          anthropicModel = 'claude-haiku-5-5';
+        }
+        return new ChatAnthropic({
+          apiKey,
+          model: anthropicModel,
+          // Claude 5.5 models do not support custom temperature values; omit unless temperature is 1
+          ...(merged.temperature === 1 ? { temperature: 1 } : {}),
+        });
+      }
+
+      case 'OpenAI':
+      default:
+        return new ChatOpenAI({
+          apiKey,
+          model: merged.model,
+          temperature,
+        });
+    }
+  }
+
+  // Normal / Proxy mode: forward to Cloudflare Worker AI proxy (/api/chat/*)
+  const normalizedProxyBase = proxy!.baseUrl.replace(/\/+$/, '');
+  const proxyToken = proxy?.token;
+
+  const proxyHeaders: Record<string, string> = {};
+  if (proxyToken) {
+    proxyHeaders.Authorization = `Bearer ${proxyToken}`;
+  }
+  if (merged.traceId) {
+    proxyHeaders['x-trace-id'] = merged.traceId;
+    proxyHeaders['cf-aig-trace-id'] = merged.traceId;
+  }
+
   switch (provider) {
     case 'Google': {
-      // Map user-facing model ID to Google Generative AI API model identifier
       const googleModel =
         merged.model === 'gemini-3.8' ? 'gemini-3.8-flash' : merged.model;
       return new ChatGoogleGenerativeAI({
-        apiKey,
+        apiKey: proxyToken || 'telegenie-proxy',
         model: googleModel,
+        baseUrl: `${normalizedProxyBase}/api/chat/google`,
+        customHeaders: Object.keys(proxyHeaders).length > 0 ? proxyHeaders : undefined,
         temperature,
       });
     }
@@ -108,19 +169,26 @@ export function createChatModel(override?: Partial<ModelConfig>): BaseChatModel 
         anthropicModel = 'claude-haiku-5-5';
       }
       return new ChatAnthropic({
-        apiKey,
+        apiKey: 'telegenie-proxy',
         model: anthropicModel,
-        // Claude 5.5 models do not support custom temperature values; omit unless temperature is 1
         ...(merged.temperature === 1 ? { temperature: 1 } : {}),
+        clientOptions: {
+          baseURL: `${normalizedProxyBase}/api/chat/anthropic`,
+          defaultHeaders: proxyHeaders,
+        },
       });
     }
 
     case 'OpenAI':
     default:
       return new ChatOpenAI({
-        apiKey,
+        apiKey: proxyToken || 'telegenie-proxy',
         model: merged.model,
         temperature,
+        configuration: {
+          baseURL: `${normalizedProxyBase}/api/chat/openai/v1`,
+          defaultHeaders: proxyHeaders,
+        },
       });
   }
 }

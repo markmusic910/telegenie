@@ -21,6 +21,8 @@ const AppInitializer = observer(({ children }: AppInitializerProps) => {
     void sdk.init({
       apiId: Number(env.telegramApiId),
       apiHash: env.telegramApiHash,
+      apiBaseUrl: env.apiBaseUrl,
+      backendBotUsername: env.telegramBotUsername,
     });
   }, [sdk]);
 

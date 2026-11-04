@@ -20,14 +20,15 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json --noCheck",
-    "dev": "tsc -p tsconfig.build.json --noCheck --watch --preserveWatchOutput",
+    "build": "tsc6 -p tsconfig.build.json --noCheck",
+    "dev": "tsc6 -p tsconfig.build.json --noCheck --watch --preserveWatchOutput",
     "test": "jest",
     "test:watch": "jest --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@telegenie/agent": "workspace:*",
+    "@telegenie/config": "workspace:*",
     "@telegenie/decorators": "workspace:*",
     "@telegenie/libs": "workspace:*",
     "@telegenie/teleproto": "workspace:*",

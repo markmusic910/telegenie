@@ -5,13 +5,14 @@
 
 // API Configuration
 export const API_CONFIG = {
-  baseUrl: process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000/api',
+  baseUrl: process.env.NEXT_PUBLIC_API_BASE_URL || 'https://api.example.com',
   timeout: parseInt(process.env.NEXT_PUBLIC_API_TIMEOUT || '10000', 10),
 } as const;
 
 // Telegram Configuration
 export const TELEGRAM_CONFIG = {
   botToken: process.env.NEXT_PUBLIC_TELEGRAM_BOT_TOKEN || '',
+  botUsername: process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || 'telegenie_ai',
   apiId: process.env.NEXT_PUBLIC_TELEGRAM_API_ID || '',
   apiHash: process.env.NEXT_PUBLIC_TELEGRAM_API_HASH || '',
 } as const;

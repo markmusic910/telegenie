@@ -44,7 +44,7 @@ export function getGraph(): TeleGenieGraph {
 
 /**
  * Named export for `langgraph.json` tooling convention.
- * Initialized lazily — only used for LangSmith / dev tooling.
+ * Initialized lazily for local agent graph inspection / dev tooling.
  */
 export const graph = {
   get instance() {

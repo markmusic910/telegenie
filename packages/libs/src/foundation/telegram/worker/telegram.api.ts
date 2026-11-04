@@ -209,6 +209,7 @@ export type TelegramWorkerApi = {
   'auth.signInWithPassword': { args: [password: string]; result: User };
   'auth.getPasswordHint': { args: []; result: string | undefined };
   'auth.getSessionString': { args: []; result: string };
+  'auth.startBot': { args: [botUsername: string, startParam: string]; result: void };
 
   /**
    * Streamed: each chunk is one dialog page (AsyncIterable).

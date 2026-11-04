@@ -18,6 +18,8 @@ module.exports = {
     '^@telegenie/libs/(.*)$': '<rootDir>/../libs/src/$1',
     '^@telegenie/sw/(.*)$': '<rootDir>/../sw/src/$1',
     '^@telegenie/sw$': '<rootDir>/../sw/src/index.ts',
+    '^@telegenie/config/(.*)$': '<rootDir>/../config/src/$1',
+    '^@telegenie/config$': '<rootDir>/../config/src/index.ts',
     '^@telegenie/decorators$': '<rootDir>/../decorators/src/index.ts',
     '^@telegenie/agent/worker/create-default-agent-worker$': '<rootDir>/../agent/src/worker/create-default-agent-worker.ts',
     '^@telegenie/agent/worker$': '<rootDir>/../agent/src/worker/index.ts',

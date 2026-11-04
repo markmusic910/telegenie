@@ -22,7 +22,7 @@ import { DialogService } from './services/dialog.service';
 import { EncryptedChatService } from './services/encrypted-chat.service';
 import { FileService } from './services/file.service';
 import { MessageReactionService } from './services/message-reaction.service';
-import { MessageService } from './services/message.service';
+import { MessageService, messageRandomId } from './services/message.service';
 import { StickerService } from './services/sticker.service';
 import { TransportService } from './services/transport.service';
 import { UserService } from './services/user.service';
@@ -569,6 +569,38 @@ export class Telegram {
   /** Push a notification payload to SW listeners (e.g. unread reaction from a tab). */
   emitMessageNotification(payload: MessageNotificationPayload): void {
     this.fanOutMessageNotification(payload);
+  }
+
+  /**
+   * Start a Telegram bot with a start parameter / challenge nonce.
+   */
+  async startBot(botUsername: string, startParam: string): Promise<void> {
+    const client = this.transportService.client;
+    if (!client) {
+      throw new Error('Telegram client not initialized');
+    }
+    const cleanUsername = botUsername.replace(/^@+/, '').trim();
+    if (this.userService) {
+      try {
+        await this.userService.resolveUsername(cleanUsername);
+      } catch (err) {
+        if (this.debug) {
+          console.warn('[Telegram] startBot resolveUsername warning:', err);
+        }
+      }
+    }
+    const inputEntity = await client.getInputEntity(cleanUsername);
+    if (!inputEntity) {
+      throw new Error(`Failed to resolve bot entity for ${botUsername}`);
+    }
+    await client.invoke(
+      new Api.messages.StartBot({
+        bot: inputEntity as any,
+        peer: inputEntity as any,
+        startParam,
+        randomId: messageRandomId(),
+      }),
+    );
   }
 }
 

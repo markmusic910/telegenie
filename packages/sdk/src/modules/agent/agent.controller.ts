@@ -18,6 +18,10 @@ export type AgentControllerOptions = {
   onStreamToken?: (runId: string, token: string) => void;
   /** Returns true if this tab is currently the leader. Used to gate Memory Engine calls. */
   isLeader?: () => boolean;
+  /** Returns the base URL for the TeleGenie Cloud backend. */
+  getBackendBaseUrl?: () => string;
+  /** Returns the active JWT token for TeleGenie Cloud. */
+  getBackendToken?: () => string | null;
 };
 
 /**
@@ -28,6 +32,8 @@ export class AgentController {
   private readonly worker: AgentWorkerClient;
   private readonly tabPage: TabPage;
   private readonly isLeader: () => boolean;
+  private readonly getBackendBaseUrl?: () => string;
+  private readonly getBackendToken?: () => string | null;
 
   private readonly streamTokenListeners = new Set<(runId: string, token: string) => void>();
 
@@ -38,6 +44,8 @@ export class AgentController {
       createLazyAgentWorkerClient(() => createDefaultAgentWorker({ tabId }));
 
     this.isLeader = options.isLeader ?? (() => false);
+    this.getBackendBaseUrl = options.getBackendBaseUrl;
+    this.getBackendToken = options.getBackendToken;
 
     this.tabPage = new TabPage({
       telegramIsAuthorized:
@@ -111,7 +119,8 @@ export class AgentController {
 
   /**
    * Configure the LLM used by the agent worker.
-   * Can pass { provider, model, apiKey, apiKeys } or (apiKey, model).
+   * Can pass { provider, model, apiKey, apiKeys, proxy } or (apiKey, model).
+   * Automatically enriches with proxy configuration when no personal API key is supplied.
    */
   @RequestLog()
   @Method()
@@ -119,6 +128,20 @@ export class AgentController {
     configOrApiKey: string | import('@telegenie/agent/worker').ModelConfig,
     model?: string,
   ): Promise<void> {
+    if (typeof configOrApiKey === 'object' && configOrApiKey !== null) {
+      const enrichedConfig = { ...configOrApiKey };
+      if (!enrichedConfig.proxy && this.getBackendBaseUrl) {
+        const baseUrl = this.getBackendBaseUrl();
+        const token = this.getBackendToken?.() ?? undefined;
+        if (baseUrl) {
+          enrichedConfig.proxy = {
+            baseUrl,
+            token: token || undefined,
+          };
+        }
+      }
+      return this.worker.call('configureModel', [enrichedConfig, model]);
+    }
     return this.worker.call('configureModel', [configOrApiKey, model]);
   }
 

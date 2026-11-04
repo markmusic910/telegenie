@@ -74,6 +74,9 @@ export function createTelegramWorkerHandlers(
     'auth.getSessionString': async () => {
       return tg.getAuthService().getSessionString();
     },
+    'auth.startBot': async (botUsername, startParam) => {
+      return tg.startBot(botUsername, startParam);
+    },
 
     'dialog.getAllDialogs': async function* (folderId) {
       const dialogService = tg.getDialogService();

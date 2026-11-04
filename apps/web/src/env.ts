@@ -5,11 +5,8 @@
 import {
   createAppEnv,
   getEnvApiKey as configGetEnvApiKey,
-  getLangSmithEnvConfig as configGetLangSmithEnvConfig,
   isApiKeyFromEnv as configIsApiKeyFromEnv,
-  isLangSmithApiKeyFromEnv as configIsLangSmithApiKeyFromEnv,
   type AppEnv,
-  type LangSmithEnvConfig,
   type LLMProviderName,
 } from '@telegenie/config';
 
@@ -26,12 +23,6 @@ export const env: AppEnv = createAppEnv({
   NEXT_PUBLIC_GOOGLE_API_KEY: process.env.NEXT_PUBLIC_GOOGLE_API_KEY,
   NEXT_PUBLIC_ANTHROPIC_API_KEY: process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY,
   NEXT_PUBLIC_OPENAI_API_KEY: process.env.NEXT_PUBLIC_OPENAI_API_KEY,
-  NEXT_PUBLIC_LANGSMITH_TRACING: process.env.NEXT_PUBLIC_LANGSMITH_TRACING,
-  NEXT_PUBLIC_LANGSMITH_ENDPOINT: process.env.NEXT_PUBLIC_LANGSMITH_ENDPOINT,
-  NEXT_PUBLIC_LANGSMITH_API_KEY: process.env.NEXT_PUBLIC_LANGSMITH_API_KEY,
-  NEXT_PUBLIC_LANGSMITH_AGENT_ID: process.env.NEXT_PUBLIC_LANGSMITH_AGENT_ID,
-  NEXT_PUBLIC_LANGSMITH_AGENT_ENVIRONMENT: process.env.NEXT_PUBLIC_LANGSMITH_AGENT_ENVIRONMENT,
-  NEXT_PUBLIC_LANGSMITH_PROJECT: process.env.NEXT_PUBLIC_LANGSMITH_PROJECT,
   NEXT_PUBLIC_APP_NAME: process.env.NEXT_PUBLIC_APP_NAME,
   NEXT_PUBLIC_APP_VERSION: process.env.NEXT_PUBLIC_APP_VERSION,
   NEXT_PUBLIC_APP_ENVIRONMENT: process.env.NEXT_PUBLIC_APP_ENVIRONMENT,
@@ -49,14 +40,4 @@ export function getEnvApiKey(provider: LLMProviderName): string {
 /** Check if API key for provider is supplied via environment variables. */
 export function isApiKeyFromEnv(provider: LLMProviderName): boolean {
   return configIsApiKeyFromEnv(provider, env);
-}
-
-/** Retrieve LangSmith configuration defined in environment variables. */
-export function getLangSmithEnvConfig(): LangSmithEnvConfig {
-  return configGetLangSmithEnvConfig(env);
-}
-
-/** Check if LangSmith API key is supplied via environment variables and is valid. */
-export function isLangSmithApiKeyFromEnv(): boolean {
-  return configIsLangSmithApiKeyFromEnv(env);
 }

@@ -32,7 +32,6 @@ import {
 import {
   getAllStoredApiKeys,
   hasApiKeyForProvider,
-  getEffectiveLangSmithConfig,
 } from '@/components/genie/genie-api-keys';
 import { useGenieRuntime } from '@/components/genie/genie-runtime.adapter';
 import GenieScheduledView from '@/components/genie/genie-scheduled.view';
@@ -225,7 +224,6 @@ export const GenieGlobalContainer = observer(function GenieGlobalContainer({
         provider,
         model: currentModelOption.id,
         apiKeys,
-        langsmith: getEffectiveLangSmithConfig(),
       });
       await sdk.agent.generateRunTitle(activeSessionId, {
         apiKeys,
@@ -239,7 +237,7 @@ export const GenieGlobalContainer = observer(function GenieGlobalContainer({
     }
   };
 
-  // Eagerly sync API keys, LangSmith config, and active model to agent worker on mount & model switch
+  // Eagerly sync API keys and active model to agent worker on mount & model switch
   useEffect(() => {
     const apiKeys = getAllStoredApiKeys();
     const provider = getModelProvider(currentModelOption.id);
@@ -248,7 +246,6 @@ export const GenieGlobalContainer = observer(function GenieGlobalContainer({
         provider,
         model: currentModelOption.id,
         apiKeys,
-        langsmith: getEffectiveLangSmithConfig(),
       })
       .catch((err) => {
         console.warn('Failed to configure agent model on mount:', err);
@@ -342,14 +339,21 @@ export const GenieGlobalContainer = observer(function GenieGlobalContainer({
 
     try {
       const provider = getModelProvider(currentModelOption.id);
-      if (hasApiKeyForProvider(provider)) {
-        await sdk.agent.configureModel({
-          provider,
-          model: currentModelOption.id,
-          apiKeys: getAllStoredApiKeys(),
-          langsmith: getEffectiveLangSmithConfig(),
-        });
+      const isBYOK = hasApiKeyForProvider(provider);
+      const backendToken = sdk.auth.getBackendToken();
+      const baseUrl = sdk.auth.getBackendBaseUrl();
+
+      if (!isBYOK && !backendToken) {
+        throw new Error(
+          `Please connect to TeleGenie Cloud in Settings to use free AI credits, or configure your own ${provider} API key.`,
+        );
       }
+
+      await sdk.agent.configureModel({
+        provider,
+        model: currentModelOption.id,
+        apiKeys: getAllStoredApiKeys(),
+      });
 
       const unsubscribe = sdk.agent.onStreamToken((_runId, token) => {
         const tokenStr =
@@ -376,16 +380,25 @@ export const GenieGlobalContainer = observer(function GenieGlobalContainer({
       });
 
       unsubscribe();
+      if (!isBYOK) {
+        void sdk.auth.getBackendMe();
+      }
       await refreshHistory();
       const freshMsgs = await sdk.agent.getRunMessages(activeSessionId);
       setSessionMessages(freshMsgs);
     } catch (err) {
       console.error('Failed to continue past session:', err);
+      const rawMsg = err instanceof Error ? err.message : String(err);
+      const friendlyMsg =
+        rawMsg.includes('402') || rawMsg.toLowerCase().includes('insufficient credits')
+          ? '⚠️ Daily Free Credits Exhausted: You have used up your daily free AI credits. Please configure your own API key in Settings or wait for tomorrow.'
+          : `Error: ${rawMsg}`;
+
       setSessionMessages((prev) => {
         if (!prev) return prev;
         return prev.map((m) =>
           m.id === tempAstId
-            ? { ...m, content: `Error: ${err instanceof Error ? err.message : String(err)}` }
+            ? { ...m, content: friendlyMsg }
             : m,
         );
       });

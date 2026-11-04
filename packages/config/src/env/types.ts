@@ -1,12 +1,44 @@
 export type LLMProviderName = 'Google' | 'Anthropic' | 'OpenAI';
 
-export interface LangSmithEnvConfig {
-  tracing: boolean;
-  endpoint: string;
-  apiKey: string;
-  agentId: string;
-  agentEnvironment: string;
-  project: string;
+export type BackendAuthStatus =
+  | 'idle'
+  | 'challenging'
+  | 'verifying'
+  | 'authenticated'
+  | 'error';
+
+export interface BackendAuthChallenge {
+  nonce: string;
+  botUsername: string;
+  expiresAt: number;
+}
+
+export interface BackendClaimResponse {
+  token: string;
+  telegramId: string;
+  expiresIn: number;
+}
+
+export interface BackendUserCredits {
+  dailyFreeLimit: number;
+  dailyFreeUsed: number;
+  dailyFreeRemaining: number;
+  paidCredits: number;
+  totalAvailable: number;
+  lastResetDate: string;
+}
+
+export interface BackendUserStatus {
+  isBlocked: boolean;
+  createdAt: number;
+  lastActiveAt: number;
+}
+
+export interface BackendUserProfile {
+  telegramId: string;
+  enableTracing: boolean;
+  credits: BackendUserCredits;
+  status: BackendUserStatus;
 }
 
 export interface AIEnvConfig {
@@ -23,12 +55,10 @@ export interface AppEnv {
   // Telegram Configuration
   telegramApiId: string;
   telegramApiHash: string;
+  telegramBotUsername?: string;
 
   // AI Configuration
   ai: AIEnvConfig;
-
-  // LangSmith Monitoring & Tracing
-  langsmith: LangSmithEnvConfig;
 
   // App Configuration
   appName: string;

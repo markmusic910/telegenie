@@ -4,10 +4,6 @@ import {
   DEFAULT_APP_ENVIRONMENT,
   DEFAULT_APP_NAME,
   DEFAULT_APP_VERSION,
-  DEFAULT_LANGSMITH_AGENT_ENVIRONMENT,
-  DEFAULT_LANGSMITH_AGENT_ID,
-  DEFAULT_LANGSMITH_ENDPOINT,
-  DEFAULT_LANGSMITH_PROJECT,
 } from '../constants';
 import type { AppEnv, RawEnvSource } from './types';
 
@@ -69,12 +65,15 @@ export function createAppEnv(customSource?: RawEnvSource): AppEnv {
   const geminiApiKey =
     get('GEMINI_API_KEY') || get('GOOGLE_API_KEY') || '';
 
+  const appEnvironment = get('APP_ENVIRONMENT', DEFAULT_APP_ENVIRONMENT);
+
   return {
     apiBaseUrl: get('API_BASE_URL', DEFAULT_API_BASE_URL),
     apiTimeout: parseInt(get('API_TIMEOUT', String(DEFAULT_API_TIMEOUT)), 10),
 
     telegramApiId: get('TELEGRAM_API_ID'),
     telegramApiHash: get('TELEGRAM_API_HASH'),
+    telegramBotUsername: get('TELEGRAM_BOT_USERNAME') || undefined,
 
     ai: {
       geminiApiKey,
@@ -82,21 +81,9 @@ export function createAppEnv(customSource?: RawEnvSource): AppEnv {
       openaiApiKey: get('OPENAI_API_KEY'),
     },
 
-    langsmith: {
-      tracing: get('LANGSMITH_TRACING') === 'true',
-      endpoint: get('LANGSMITH_ENDPOINT', DEFAULT_LANGSMITH_ENDPOINT),
-      apiKey: get('LANGSMITH_API_KEY'),
-      agentId: get('LANGSMITH_AGENT_ID', DEFAULT_LANGSMITH_AGENT_ID),
-      agentEnvironment: get(
-        'LANGSMITH_AGENT_ENVIRONMENT',
-        DEFAULT_LANGSMITH_AGENT_ENVIRONMENT,
-      ),
-      project: get('LANGSMITH_PROJECT', DEFAULT_LANGSMITH_PROJECT),
-    },
-
     appName: get('APP_NAME', DEFAULT_APP_NAME),
     appVersion: get('APP_VERSION', DEFAULT_APP_VERSION),
-    appEnvironment: get('APP_ENVIRONMENT', DEFAULT_APP_ENVIRONMENT),
+    appEnvironment,
 
     enableDebug: get('ENABLE_DEBUG', 'true') === 'true',
     enableAnalytics: get('ENABLE_ANALYTICS', 'false') === 'true',

@@ -1,4 +1,5 @@
 import type { IdType } from '@telegenie/libs/foundation/notification';
+import type { BackendAuthStatus, BackendUserProfile } from '@telegenie/config';
 import type { ChannelFull } from './entity/models/channel-full.model';
 import type { Channel } from './entity/models/channel.model';
 import type { ChatFull } from './entity/models/chat-full.model';
@@ -42,6 +43,13 @@ export interface AuthSliceView {
   readonly authIsCodeViaApp: boolean;
   readonly authPhoneNumber: string;
   readonly authPhoneCodeHash: string;
+
+  readonly backendToken: string | null;
+  readonly backendUserProfile: BackendUserProfile | null;
+  readonly backendAuthStatus: BackendAuthStatus;
+  readonly backendAuthError: string | null;
+  readonly backendBotUsername: string;
+  readonly backendChallengeNonce: string | null;
 }
 
 export type LeaderSliceView = LeaderState;

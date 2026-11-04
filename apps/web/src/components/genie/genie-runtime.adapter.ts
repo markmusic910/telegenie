@@ -7,7 +7,6 @@ import { useMemo, useRef } from 'react';
 import {
   getAllStoredApiKeys,
   hasApiKeyForProvider,
-  getEffectiveLangSmithConfig,
 } from './genie-api-keys';
 import { DEFAULT_MODEL_ID, getModelProvider } from './genie-models.constants';
 
@@ -67,14 +66,16 @@ export function useGenieRuntime({
 
         const activeModel = modelRef.current || DEFAULT_MODEL_ID;
         const provider = getModelProvider(activeModel);
+        const isBYOK = hasApiKeyForProvider(provider);
+        const backendToken = sdk.auth.getBackendToken();
 
-        // Check if API key is configured
-        if (!hasApiKeyForProvider(provider)) {
+        // If not BYOK, user must be authenticated with TeleGenie Cloud to use proxy
+        if (!isBYOK && !backendToken) {
           yield {
             content: [
               {
                 type: 'text',
-                text: `⚠️ **API Key Required**: Please configure your **${provider}** API key in Settings (gear icon or sidebar) to use **${activeModel}**.`,
+                text: `⚠️ **Authentication or API Key Required**: Please connect to **TeleGenie Cloud** in Settings to use free AI credits, or configure your own **${provider}** API key in Settings.`,
               },
             ],
           };
@@ -88,7 +89,6 @@ export function useGenieRuntime({
             provider,
             model: activeModel,
             apiKeys,
-            langsmith: getEffectiveLangSmithConfig(),
           });
         } catch (err) {
           console.warn('[GenieRuntime] Failed to configure model:', err);
@@ -128,13 +128,16 @@ export function useGenieRuntime({
             presetId: presetIdRef.current,
           })
           .catch((err: unknown) => {
-            const msg =
+            const rawMsg =
               err instanceof Error
                 ? err.message
                 : typeof err === 'object' && err !== null && 'message' in (err as Record<string, unknown>)
                   ? String((err as Record<string, unknown>).message)
                   : String(err || 'Agent chat failed');
-            return `Error: ${msg}`;
+            if (rawMsg.includes('402') || rawMsg.toLowerCase().includes('insufficient credits')) {
+              return '⚠️ **Daily Free Credits Exhausted**: You have used up your daily free AI credits. Please configure your own API key in Settings (gear icon) or wait for tomorrow.';
+            }
+            return `Error: ${rawMsg}`;
           })
           .finally(() => {
             isDone = true;
@@ -142,6 +145,9 @@ export function useGenieRuntime({
             if (resolveWait) {
               resolveWait();
               resolveWait = null;
+            }
+            if (!isBYOK) {
+              void sdk.auth.getBackendMe();
             }
             onRunCompletedRef.current?.();
           });

@@ -101,7 +101,10 @@ export async function understandNode(
       return { intent: 'GENERAL' };
     }
 
-    const model = createChatModel(state.model ? { model: state.model } : undefined);
+    const model = createChatModel({
+      ...(state.model ? { model: state.model } : {}),
+      ...(state.runId ? { traceId: state.runId } : {}),
+    });
     const prompt = INTENT_CLASSIFICATION_PROMPT.replace('{question}', userText);
     const response = await model.invoke([{ role: 'user', content: prompt }]);
     const rawText = extractText(response.content);
@@ -159,7 +162,10 @@ export async function retrieveNode(
 export async function generateNode(
   state: AgentGraphState,
 ): Promise<Partial<AgentGraphState>> {
-  const model = createChatModel(state.model ? { model: state.model } : undefined);
+  const model = createChatModel({
+    ...(state.model ? { model: state.model } : {}),
+    ...(state.runId ? { traceId: state.runId } : {}),
+  });
 
   const context = contextBuilder.build({
     memories: state.retrievedMemories,
