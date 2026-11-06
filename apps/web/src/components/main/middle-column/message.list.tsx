@@ -142,8 +142,8 @@ const MessageList = observer(({ peerId, className }: MessageListProps) => {
         ref={bindScroller}
         data-select-mode={threadUI?.isSelectMode ? 'true' : undefined}
         className={cn(
-          'h-full w-full overflow-x-hidden overflow-y-auto px-1 py-3 [overflow-anchor:none]',
-          (isInitialLoading || isEmpty) && 'flex items-center justify-center',
+          'h-full w-full overflow-x-hidden overflow-y-auto px-1 py-3 [overflow-anchor:none] flex flex-col',
+          (isInitialLoading || isEmpty) && 'items-center justify-center',
         )}
       >
         {isInitialLoading ? (
@@ -154,7 +154,7 @@ const MessageList = observer(({ peerId, className }: MessageListProps) => {
         ) : isEmpty ? (
           <MessageEmpty />
         ) : (
-          <div>
+          <div className="mt-auto w-full">
             {hasHistoryTriggers && (
               <div ref={backwardsTriggerRef} className="backwards-trigger h-0 w-full" aria-hidden />
             )}

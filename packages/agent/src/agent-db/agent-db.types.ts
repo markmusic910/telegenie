@@ -98,10 +98,30 @@ export interface DialogPreset {
   peerId: string;
   /** Explicit background description (e.g. "This is the chat for my key client"). */
   background?: string;
-  /** Desired response tone (e.g. "formal", "friendly", "concise"). */
+  /** Desired response tone identifier (e.g. "formal", "friendly", "concise", "custom"). */
   tone?: string;
+  /** Full tone prompt directive passed to the LLM. */
+  tonePrompt?: string;
+  /** Selected skill IDs enabled for this dialog. */
+  skills?: string[];
   /** Custom system instructions specific to this dialog. */
   customInstructions?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+// ---------------------------------------------------------------------------
+// GenieSkill
+// ---------------------------------------------------------------------------
+
+/**
+ * User-configured skill providing modular prompt instructions to the agent.
+ */
+export interface GenieSkill {
+  id: string;
+  title: string;
+  content: string;
+  description?: string;
   createdAt: number;
   updatedAt: number;
 }

@@ -336,8 +336,7 @@ export const GenieCopilotPanel = observer(function GenieCopilotPanel({
         <GenieConfigDialog
           open={isConfigDialogOpen}
           onOpenChange={setIsConfigDialogOpen}
-          activeProvider={getModelProvider(selectedModel)}
-          activeModel={selectedModel}
+          peerId={peerId}
         />
       </div>
     </AssistantRuntimeProvider>

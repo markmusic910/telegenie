@@ -1,5 +1,5 @@
 import type { AgentMessageRecord } from '../types/agent-message-record';
-import type { AgentMessage, AgentRun, DialogPreset } from '../agent-db/agent-db.types';
+import type { AgentMessage, AgentRun, DialogPreset, GenieSkill } from '../agent-db/agent-db.types';
 import type { ModelConfig } from '../agent/models';
 import type { AgentPreset } from '../preset/preset.types';
 
@@ -47,6 +47,22 @@ export type AgentWorkerApi = {
    */
   configureModel: {
     args: [configOrApiKey: string | ModelConfig, model?: string];
+    result: void;
+  };
+
+  /**
+   * Configure the list of installed skills available to the agent.
+   */
+  configureSkills: {
+    args: [skills: GenieSkill[]];
+    result: void;
+  };
+
+  /**
+   * Configure the user identity (conforming to USER.md) for the agent.
+   */
+  configureUserIdentity: {
+    args: [identity: string];
     result: void;
   };
 

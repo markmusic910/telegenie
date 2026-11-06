@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/lib/components/ui/button';
 import { observer } from 'mobx-react-lite';
+import { useRouter } from 'next/navigation';
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 import {
@@ -33,6 +34,8 @@ import {
   getAllStoredApiKeys,
   hasApiKeyForProvider,
 } from '@/components/genie/genie-api-keys';
+import { getInstalledSkills } from '@/components/genie/genie-skills.storage';
+import { getUserIdentity } from '@/components/genie/genie-user-identity.storage';
 import { useGenieRuntime } from '@/components/genie/genie-runtime.adapter';
 import GenieScheduledView from '@/components/genie/genie-scheduled.view';
 import GenieSearchView from '@/components/genie/genie-search.view';
@@ -151,6 +154,7 @@ const DEFAULT_PRESETS: AgentPreset[] = [
 export const GenieGlobalContainer = observer(function GenieGlobalContainer({
   onClose,
 }: GenieGlobalContainerProps) {
+  const router = useRouter();
   const sdk = useSDK();
   const [activeTab, setActiveTab] = useState<GenieSidebarTab>('NEW_CHAT');
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL_ID);
@@ -354,6 +358,8 @@ export const GenieGlobalContainer = observer(function GenieGlobalContainer({
         model: currentModelOption.id,
         apiKeys: getAllStoredApiKeys(),
       });
+      await sdk.agent.configureSkills(getInstalledSkills());
+      await sdk.agent.configureUserIdentity(getUserIdentity());
 
       const unsubscribe = sdk.agent.onStreamToken((_runId, token) => {
         const tokenStr =
@@ -434,7 +440,7 @@ export const GenieGlobalContainer = observer(function GenieGlobalContainer({
         activeSessionId={activeSessionId}
         onSelectSession={handleSelectSession}
         onClose={onClose}
-        onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenSettings={() => router.push('/settings/telegenie')}
       />
 
       {/* Right Column: Main Content Area */}
@@ -814,14 +820,6 @@ export const GenieGlobalContainer = observer(function GenieGlobalContainer({
           </AssistantRuntimeProvider>
         )}
       </div>
-
-      {/* Configuration Modal */}
-      <GenieConfigDialog
-        open={isSettingsOpen}
-        onOpenChange={setIsSettingsOpen}
-        activeProvider={activeProvider}
-        activeModel={currentModelOption.id}
-      />
     </div>
   );
 });

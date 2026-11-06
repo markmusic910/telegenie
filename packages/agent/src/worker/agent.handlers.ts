@@ -196,6 +196,16 @@ export function createAgentWorkerHandlers(): RpcHandlers<AgentWorkerApi> {
       configureAgentModel(configOrApiKey, model);
     },
 
+    configureSkills: async (skills): Promise<void> => {
+      const state = getWorkerState();
+      state.installedSkills = skills;
+    },
+
+    configureUserIdentity: async (identity: string): Promise<void> => {
+      const state = getWorkerState();
+      state.userIdentity = identity;
+    },
+
     getDialogPreset: async (peerId: string) => {
       const { dialogPresetRepo } = getWorkerState();
       return dialogPresetRepo.findByPeerId(peerId);

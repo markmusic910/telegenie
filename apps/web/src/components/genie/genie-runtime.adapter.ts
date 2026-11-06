@@ -8,6 +8,8 @@ import {
   getAllStoredApiKeys,
   hasApiKeyForProvider,
 } from './genie-api-keys';
+import { getInstalledSkills } from './genie-skills.storage';
+import { getUserIdentity } from './genie-user-identity.storage';
 import { DEFAULT_MODEL_ID, getModelProvider } from './genie-models.constants';
 
 export type GenieRuntimeOptions = {
@@ -82,7 +84,7 @@ export function useGenieRuntime({
           return;
         }
 
-        // Configure the agent worker with the latest keys and active model
+        // Configure the agent worker with the latest keys, model, installed skills, and user identity
         try {
           const apiKeys = getAllStoredApiKeys();
           await sdk.agent.configureModel({
@@ -90,6 +92,8 @@ export function useGenieRuntime({
             model: activeModel,
             apiKeys,
           });
+          await sdk.agent.configureSkills(getInstalledSkills());
+          await sdk.agent.configureUserIdentity(getUserIdentity());
         } catch (err) {
           console.warn('[GenieRuntime] Failed to configure model:', err);
         }

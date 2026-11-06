@@ -1,5 +1,5 @@
 export type { AgentWorkerApi, AgentWorkerEvents, AgentMessageRecord, ChatOptions, ChatResult } from './agent.api';
-export type { DialogPreset, AgentRun, AgentMessage } from '../agent-db/agent-db.types';
+export type { DialogPreset, GenieSkill, AgentRun, AgentMessage } from '../agent-db/agent-db.types';
 export type { ModelConfig, ProviderApiKeys, LLMProvider } from '../agent/models';
 export type { AgentPreset } from '../preset/preset.types';
 export { createAgentWorkerHandlers } from './agent.handlers';

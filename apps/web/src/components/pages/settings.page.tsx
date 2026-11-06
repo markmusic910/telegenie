@@ -3,6 +3,9 @@
 import AppNavBar from '@/components/main/app-nav.bar';
 import RecentReactionsDialog from '@/components/settings/recent-reactions.dialog';
 import StickerSetDialog from '@/components/settings/sticker-set.dialog';
+import TeleGenieGeneralDetail from '@/components/settings/telegenie-general.detail';
+import TeleGenieSkillEditorDetail from '@/components/settings/telegenie-skill-editor.detail';
+import TeleGenieSkillsListDetail from '@/components/settings/telegenie-skills-list.detail';
 import PeerAvatar from '@/lib/components/peer.avatar';
 import { Button } from '@/lib/components/ui/button';
 import { ScrollArea } from '@/lib/components/ui/scroll-area';
@@ -17,10 +20,13 @@ import { observer } from 'mobx-react-lite';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 
-type SettingsSection = 'profile' | 'stickers';
+export type SettingsSection = 'profile' | 'stickers' | 'telegenie';
+export type TeleGenieSubSection = 'general' | 'skills-list' | 'skill-detail';
 
 export interface SettingsPageProps {
   section: SettingsSection;
+  subSection?: TeleGenieSubSection;
+  skillId?: string;
 }
 
 const PLACEHOLDER_ROWS = [
@@ -35,7 +41,11 @@ const PLACEHOLDER_ROWS = [
 /**
  * Telegram-style settings: list column plus detail pane, reached from the folder rail.
  */
-const SettingsPage = observer(function SettingsPage({ section }: SettingsPageProps) {
+const SettingsPage = observer(function SettingsPage({
+  section,
+  subSection = 'general',
+  skillId,
+}: SettingsPageProps) {
   const router = useRouter();
   const sdk = useSDK();
   const globalStore = useStore('global');
@@ -117,6 +127,11 @@ const SettingsPage = observer(function SettingsPage({ section }: SettingsPagePro
               active={section === 'stickers'}
               onClick={() => router.push('/settings/stickers')}
             />
+            <SettingsNavRow
+              label="TeleGenie Config"
+              active={section === 'telegenie'}
+              onClick={() => router.push('/settings/telegenie')}
+            />
           </nav>
         </ScrollArea>
         <AppNavBar />
@@ -132,7 +147,7 @@ const SettingsPage = observer(function SettingsPage({ section }: SettingsPagePro
               peerId={self?.id}
               photo={selfEntity?.photo}
             />
-          ) : (
+          ) : section === 'stickers' ? (
             <StickersDetail
               defaultReaction={defaultReaction}
               catalog={catalog.filter((row) => !row.inactive && !row.premium)}
@@ -142,6 +157,12 @@ const SettingsPage = observer(function SettingsPage({ section }: SettingsPagePro
               onOpenRecent={() => setRecentOpen(true)}
               onRemoveStickerSet={onRemoveStickerSet}
             />
+          ) : subSection === 'skills-list' ? (
+            <TeleGenieSkillsListDetail />
+          ) : subSection === 'skill-detail' && skillId ? (
+            <TeleGenieSkillEditorDetail skillId={skillId} />
+          ) : (
+            <TeleGenieGeneralDetail />
           )}
         </ScrollArea>
       </main>
@@ -164,7 +185,7 @@ function SettingsNavRow({
       type="button"
       onClick={onClick}
       className={cn(
-        'flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm',
+        'flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm outline-none focus:outline-none focus-visible:outline-none cursor-pointer',
         active ? 'bg-accent font-medium' : 'hover:bg-accent/60',
       )}
     >

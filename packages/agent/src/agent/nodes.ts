@@ -7,7 +7,7 @@ import {
   buildContextPrompt,
 } from './prompts';
 import type { Retriever } from '../runtime/retriever';
-import { ContextBuilder } from '../runtime/context-builder';
+import { ContextBuilder, DEFAULT_TONE_PROMPTS } from '../runtime/context-builder';
 import { getTabPageClient, hasTabPageClient } from '../worker/tab-page-client';
 
 import { presetService } from '../preset/preset.service';
@@ -167,25 +167,50 @@ export async function generateNode(
     ...(state.runId ? { traceId: state.runId } : {}),
   });
 
+  let activeSkills: import('../agent-db/agent-db.types').GenieSkill[] = [];
+  let userIdentity: string | undefined;
+  try {
+    const { getWorkerState } = await import('../worker/agent-worker-init');
+    const workerState = getWorkerState();
+    const installedSkills = workerState.installedSkills || [];
+    const activeSkillIds = new Set(state.dialogPreset?.skills || []);
+    activeSkills = installedSkills.filter((s) => activeSkillIds.has(s.id));
+    userIdentity = workerState.userIdentity;
+  } catch {
+    // Worker state not initialized (e.g. in standalone tests)
+  }
+
   const context = contextBuilder.build({
     memories: state.retrievedMemories,
     commitments: state.retrievedCommitments,
     messages: state.retrievedMessages,
     entities: [],
     dialogPreset: state.dialogPreset,
+    activeSkills,
+    userIdentity,
   });
 
   const systemSections = [
     SYSTEM_PROMPT,
-    buildContextPrompt(context),
   ];
+
+  if (userIdentity?.trim()) {
+    systemSections.push(
+      `## User Identity & Preferences (USER.md)\nYou are serving this user. Always adhere to their background, identity, role, and stated preferences:\n\n${userIdentity.trim()}`,
+    );
+  }
+
+  systemSections.push(buildContextPrompt(context));
 
   if (state.presetId) {
     const preset = presetService.getPresetById(state.presetId);
     if (preset) {
       systemSections.push(`Active Task Preset [${preset.name}]: ${preset.prompt}`);
       if (preset.tone) {
-        systemSections.push(`Tone requirement: Please respond using a ${preset.tone} tone.`);
+        const toneDirective =
+          DEFAULT_TONE_PROMPTS[preset.tone.toLowerCase().trim()] ||
+          `Please respond using a ${preset.tone} tone.`;
+        systemSections.push(`Tone requirement: ${toneDirective}`);
       }
     }
   }
@@ -215,6 +240,20 @@ export async function generateNode(
     if (preset) {
       traceSteps.push(`• Preset: Applied "${preset.name}" (${preset.tone || 'standard'} tone)`);
     }
+  }
+  if (state.dialogPreset) {
+    const details: string[] = [];
+    if (state.dialogPreset.background) details.push('Custom background');
+    if (state.dialogPreset.tone) details.push(`Tone: ${state.dialogPreset.tone}`);
+    if (details.length > 0) {
+      traceSteps.push(`• Dialog Directives: ${details.join(', ')}`);
+    }
+  }
+  if (activeSkills.length > 0) {
+    traceSteps.push(`• Active Skills: ${activeSkills.map((s) => s.title).join(', ')}`);
+  }
+  if (userIdentity?.trim()) {
+    traceSteps.push(`• User Identity: Loaded profile (USER.md)`);
   }
   if (state.model) {
     traceSteps.push(`• Model: ${state.model}`);

@@ -145,6 +145,20 @@ export class AgentController {
     return this.worker.call('configureModel', [configOrApiKey, model]);
   }
 
+  /** Configure installed skills available to the agent. */
+  @RequestLog()
+  @Method()
+  configureSkills(skills: import('@telegenie/agent/worker').GenieSkill[]): Promise<void> {
+    return this.worker.call('configureSkills', [skills]);
+  }
+
+  /** Configure the user identity (conforming to USER.md) for the agent. */
+  @RequestLog()
+  @Method()
+  configureUserIdentity(identity: string): Promise<void> {
+    return this.worker.call('configureUserIdentity', [identity]);
+  }
+
   /** Get user-configured preset for a specific dialog. */
   @RequestLog()
   @Method()

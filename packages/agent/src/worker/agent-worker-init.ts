@@ -1,6 +1,7 @@
 import { getTabId } from '@telegenie/decorators';
 import { AgentDb } from '../agent-db/agent-db';
 import { cleanupAgentDb } from '../agent-db/cleanup';
+import type { GenieSkill } from '../agent-db/agent-db.types';
 import { AgentMessageRepository } from '../agent-db/repository/agent-message.repository';
 import { AgentRunRepository } from '../agent-db/repository/agent-run.repository';
 import { DialogPresetRepository } from '../agent-db/repository/dialog-preset.repository';
@@ -29,6 +30,8 @@ export type AgentWorkerState = {
   agentMessageRepo: AgentMessageRepository;
   memoryEngine: MemoryEngine | undefined; // only initialized after configureModel
   retriever: Retriever;
+  installedSkills: GenieSkill[];
+  userIdentity?: string;
   accountSlot: string;
   tabId: string;
 };
@@ -107,6 +110,7 @@ export async function initAgentWorker(
     agentMessageRepo,
     memoryEngine: undefined,
     retriever,
+    installedSkills: [],
     accountSlot,
     tabId,
   };
