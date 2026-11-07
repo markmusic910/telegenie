@@ -1,0 +1,130 @@
+# Layer 2: Intent Classification Benchmark (Promptfoo)
+description: 'TeleGenie Intent Classification Eval Suite (Layer 2)'
+
+prompts:
+  - |
+    Classify the user's question into exactly one of the following intent categories:
+
+    FOLLOW_UP — asking about follow-ups, pending matters, or recent status (e.g. "What do I need to follow up on?")
+    PREFERENCE — asking about someone's preferences, likes, or dislikes
+    FACT — asking for a factual claim about a person or organization (e.g. "Where does John work?")
+    RELATIONSHIP — asking about how people relate to each other
+    EVENT — asking about a specific event or meeting
+    PROJECT — asking about an ongoing project or initiative
+    TOPIC — asking about recurring themes or discussion topics
+    GENERAL — any other question about conversation history
+
+    Respond with ONLY the category name, no explanation.
+
+    User question: {{question}}
+
+providers:
+  - id: 'openai:gpt-4o'
+    config:
+      temperature: 0.0
+
+tests:
+  # Follow-ups
+  - vars:
+      question: 'What do I need to follow up on today?'
+    assert:
+      - type: icontains
+        value: 'FOLLOW_UP'
+  - vars:
+      question: 'Did Alice reply to my question about the contract?'
+    assert:
+      - type: icontains
+        value: 'FOLLOW_UP'
+  - vars:
+      question: 'Any pending action items from yesterday’s meeting?'
+    assert:
+      - type: icontains
+        value: 'FOLLOW_UP'
+
+  # Preferences
+  - vars:
+      question: 'What does Sarah prefer to drink during meetings?'
+    assert:
+      - type: icontains
+        value: 'PREFERENCE'
+  - vars:
+      question: 'Do I prefer tabs or spaces?'
+    assert:
+      - type: icontains
+        value: 'PREFERENCE'
+  - vars:
+      question: 'What is Dave’s favorite editor?'
+    assert:
+      - type: icontains
+        value: 'PREFERENCE'
+
+  # Facts
+  - vars:
+      question: 'Where does Alex work?'
+    assert:
+      - type: icontains
+        value: 'FACT'
+  - vars:
+      question: 'What is the Wi-Fi password for the guest network?'
+    assert:
+      - type: icontains
+        value: 'FACT'
+  - vars:
+      question: 'Which city is Marcus currently based in?'
+    assert:
+      - type: icontains
+        value: 'FACT'
+
+  # Relationships
+  - vars:
+      question: 'Who is Chloe to me?'
+    assert:
+      - type: icontains
+        value: 'RELATIONSHIP'
+  - vars:
+      question: 'How do I know Dr. Henderson?'
+    assert:
+      - type: icontains
+        value: 'RELATIONSHIP'
+
+  # Events
+  - vars:
+      question: 'When is our next all-hands meeting?'
+    assert:
+      - type: icontains
+        value: 'EVENT'
+  - vars:
+      question: 'What time is my flight to Tokyo on December 3rd?'
+    assert:
+      - type: icontains
+        value: 'EVENT'
+  - vars:
+      question: 'When is the deadline for the security review?'
+    assert:
+      - type: icontains
+        value: 'EVENT'
+
+  # Projects & Topics
+  - vars:
+      question: 'What is the status of Project Titan milestone 2?'
+    assert:
+      - type: icontains
+        value: 'PROJECT'
+  - vars:
+      question: 'What topics do we talk about most often in the dev channel?'
+    assert:
+      - type: icontains
+        value: 'TOPIC'
+
+  # General
+  - vars:
+      question: 'Tell me a joke about programming.'
+    assert:
+      - type: icontains
+        value: 'GENERAL'
+  - vars:
+      question: 'Good morning! How are you today?'
+    assert:
+      - type: icontains
+        value: 'GENERAL'
+

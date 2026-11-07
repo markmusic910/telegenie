@@ -26,7 +26,13 @@
   "scripts": {
     "build": "tsc6 -p tsconfig.json --noCheck",
     "dev": "tsc6 -p tsconfig.json --noCheck --watch --preserveWatchOutput",
-    "test": "echo 'No tests yet'"
+    "test": "node ../../node_modules/.bin/jest",
+    "test:watch": "node ../../node_modules/.bin/jest --watch",
+    "eval": "promptfoo eval -c evals/intent.promptfoo.yaml && promptfoo eval -c evals/judge.promptfoo.yaml && promptfoo eval -c evals/memory.promptfoo.yaml",
+    "eval:intent": "promptfoo eval -c evals/intent.promptfoo.yaml",
+    "eval:memory": "promptfoo eval -c evals/memory.promptfoo.yaml",
+    "eval:judge": "promptfoo eval -c evals/judge.promptfoo.yaml",
+    "eval:view": "promptfoo view"
   },
   "dependencies": {
     "@langchain/anthropic": "^1.5.13",
@@ -43,6 +49,10 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@types/jest": "^29.5.1",
+    "jest": "^29.5.0",
+    "promptfoo": "^0.125.1",
+    "ts-jest": "^29.1.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2"
   }
 }

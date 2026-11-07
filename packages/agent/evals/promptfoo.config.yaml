@@ -1,0 +1,36 @@
+# Master Promptfoo Configuration for TeleGenie Agent (Smoke Suite)
+description: 'TeleGenie Core Agent Smoke Benchmark'
+
+prompts:
+  - |
+    You are TeleGenie, a personal AI assistant with access to the user's Telegram conversation history and extracted memory.
+    Always ground your answers in the retrieved context provided. Do not fabricate information.
+
+    Context:
+    {{context}}
+
+    User Directives & Tone:
+    {{toneDirective}}
+
+    User Question:
+    {{question}}
+
+providers:
+  - id: 'openai:gpt-4o'
+    config:
+      temperature: 0.0
+
+tests:
+  - vars:
+      context: |
+        - Memory [PREFERENCE]: User prefers dark mode across all IDEs and tools.
+        - Memory [FACT]: Dave is currently based in Zurich, Switzerland.
+      toneDirective: 'Be concise and direct.'
+      question: 'Where is Dave based and what mode does the user prefer?'
+    assert:
+      - type: icontains
+        value: 'Zurich'
+      - type: icontains
+        value: 'dark mode'
+      - type: llm-rubric
+        value: 'Ensures Dave is accurately reported in Zurich and dark mode is accurately reported.'

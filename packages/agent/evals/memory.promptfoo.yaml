@@ -1,0 +1,408 @@
+# Layer 2 & Layer 3: Memory Extraction & Semantic Similarity Benchmark (Promptfoo)
+description: 'TeleGenie Memory Extraction 50-Golden-Suite Benchmark (Layer 2 & 3)'
+
+prompts:
+  - |
+    You are a memory extraction assistant. Given a Telegram message, extract all semantically meaningful facts, preferences, relationships, events, projects, and recurring topics.
+
+    Output ONLY a JSON object with a "candidates" array. Each candidate must have:
+    - type: one of FACT, PREFERENCE, RELATIONSHIP, EVENT, PROJECT, TOPIC
+    - subject: name of the primary person or entity
+    - predicate: optional semantic relationship (e.g. "works_at", "prefers")
+    - object: optional secondary entity or plain value
+    - confidence: 0.0 to 1.0
+    - importance: 0.0 to 1.0 (how useful for future reference)
+    - content: human-readable one-sentence summary
+    - sourceStart/sourceEnd: character offsets within the message text
+
+    Skip trivial content (greetings, reactions, "ok", "thanks", etc).
+    If nothing is extractable, return { "candidates": [] }.
+
+    Message:
+    "{{message}}"
+
+providers:
+  - id: 'openai:gpt-4o'
+    config:
+      temperature: 0.0
+      response_format:
+        type: json_object
+
+defaultTest:
+  assert:
+    - type: is-json
+
+tests:
+  # --- PREFERENCES ---
+  - vars:
+      message: 'I prefer using dark mode in all my IDEs and applications.'
+    assert:
+      - type: icontains
+        value: 'PREFERENCE'
+      - type: icontains
+        value: 'dark mode'
+      - type: similar
+        value: 'User prefers dark mode across all IDEs and tools.'
+        threshold: 0.82
+
+  - vars:
+      message: 'Please do not call me before 10 AM, I prefer asynchronous communication in the morning.'
+    assert:
+      - type: icontains
+        value: 'PREFERENCE'
+      - type: icontains
+        value: 'asynchronous'
+
+  - vars:
+      message: 'Alice mentioned she prefers coffee over tea, especially dark roast.'
+    assert:
+      - type: icontains
+        value: 'PREFERENCE'
+      - type: icontains
+        value: 'coffee'
+
+  - vars:
+      message: 'I really enjoy writing TypeScript and using strict mode for all projects.'
+    assert:
+      - type: icontains
+        value: 'PREFERENCE'
+      - type: icontains
+        value: 'TypeScript'
+
+  - vars:
+      message: 'Bob told me he hates long meetings and prefers short 15-minute standups.'
+    assert:
+      - type: icontains
+        value: 'PREFERENCE'
+      - type: icontains
+        value: 'standups'
+
+  - vars:
+      message: 'My favorite terminal emulator on Mac is Ghostty.'
+    assert:
+      - type: icontains
+        value: 'PREFERENCE'
+      - type: icontains
+        value: 'Ghostty'
+
+  - vars:
+      message: 'Carol dislikes Jira and prefers tracking tasks with Linear.'
+    assert:
+      - type: icontains
+        value: 'PREFERENCE'
+      - type: icontains
+        value: 'Linear'
+
+  - vars:
+      message: 'I always use tabs instead of spaces for indentation.'
+    assert:
+      - type: icontains
+        value: 'PREFERENCE'
+      - type: icontains
+        value: 'tabs'
+
+  # --- FACTS ---
+  - vars:
+      message: 'I work at Stripe as a principal security architect.'
+    assert:
+      - type: icontains
+        value: 'FACT'
+      - type: icontains
+        value: 'Stripe'
+
+  - vars:
+      message: 'Dave is currently based in Zurich, Switzerland.'
+    assert:
+      - type: icontains
+        value: 'FACT'
+      - type: icontains
+        value: 'Zurich'
+
+  - vars:
+      message: 'Our production database runs on PostgreSQL 16 hosted on AWS RDS.'
+    assert:
+      - type: icontains
+        value: 'FACT'
+      - type: icontains
+        value: 'PostgreSQL'
+
+  - vars:
+      message: 'Sarah completed her PhD in Computer Science at Stanford.'
+    assert:
+      - type: icontains
+        value: 'FACT'
+      - type: icontains
+        value: 'Stanford'
+
+  - vars:
+      message: 'I moved to Berlin last November and got an apartment in Mitte.'
+    assert:
+      - type: icontains
+        value: 'FACT'
+      - type: icontains
+        value: 'Berlin'
+
+  - vars:
+      message: 'Elena speaks fluent French, German, and Russian.'
+    assert:
+      - type: icontains
+        value: 'FACT'
+      - type: icontains
+        value: 'French'
+
+  - vars:
+      message: 'The office address is 500 Howard Street, Suite 400, San Francisco.'
+    assert:
+      - type: icontains
+        value: 'FACT'
+      - type: icontains
+        value: 'Howard Street'
+
+  - vars:
+      message: 'Marcus is the maintainer of the open-source libteleproto package.'
+    assert:
+      - type: icontains
+        value: 'FACT'
+      - type: icontains
+        value: 'libteleproto'
+
+  # --- RELATIONSHIPS ---
+  - vars:
+      message: 'Alex is my direct engineering manager at Acme Corp.'
+    assert:
+      - type: icontains
+        value: 'RELATIONSHIP'
+      - type: icontains
+        value: 'manager'
+
+  - vars:
+      message: 'I worked with Sophia for three years on the core infrastructure team.'
+    assert:
+      - type: icontains
+        value: 'RELATIONSHIP'
+      - type: icontains
+        value: 'Sophia'
+
+  - vars:
+      message: 'Michael introduced me to our new client, Dr. Henderson.'
+    assert:
+      - type: icontains
+        value: 'RELATIONSHIP'
+      - type: icontains
+        value: 'Henderson'
+
+  - vars:
+      message: 'Chloe is my sister and she also works as a software developer.'
+    assert:
+      - type: icontains
+        value: 'RELATIONSHIP'
+      - type: icontains
+        value: 'sister'
+
+  - vars:
+      message: 'Lucas joined our team as a frontend contractor under Nina’s supervision.'
+    assert:
+      - type: icontains
+        value: 'RELATIONSHIP'
+      - type: icontains
+        value: 'Lucas'
+
+  - vars:
+      message: 'Victor is our point of contact at the payment vendor firm.'
+    assert:
+      - type: icontains
+        value: 'RELATIONSHIP'
+      - type: icontains
+        value: 'Victor'
+
+  - vars:
+      message: 'I mentor Kevin every other Tuesday on backend architecture.'
+    assert:
+      - type: icontains
+        value: 'RELATIONSHIP'
+      - type: icontains
+        value: 'Kevin'
+
+  - vars:
+      message: 'Rachel and Tom co-founded the AI research lab in Cambridge.'
+    assert:
+      - type: icontains
+        value: 'RELATIONSHIP'
+      - type: icontains
+        value: 'co-founded'
+
+  # --- EVENTS ---
+  - vars:
+      message: 'Quarterly planning sync is scheduled for next Monday at 2:00 PM EST.'
+    assert:
+      - type: icontains
+        value: 'EVENT'
+      - type: icontains
+        value: 'planning'
+
+  - vars:
+      message: 'The security audit deadline is set for November 20th by end of day.'
+    assert:
+      - type: icontains
+        value: 'EVENT'
+      - type: icontains
+        value: 'audit'
+
+  - vars:
+      message: 'My flight to Tokyo departs on December 3rd from SFO.'
+    assert:
+      - type: icontains
+        value: 'EVENT'
+      - type: icontains
+        value: 'Tokyo'
+
+  - vars:
+      message: 'We have an emergency release retrospective tomorrow morning at 9am.'
+    assert:
+      - type: icontains
+        value: 'EVENT'
+      - type: icontains
+        value: 'retrospective'
+
+  - vars:
+      message: 'Registration for NeurIPS 2026 conference closes on Friday night.'
+    assert:
+      - type: icontains
+        value: 'EVENT'
+      - type: icontains
+        value: 'NeurIPS'
+
+  - vars:
+      message: 'Board meeting with the venture investors is confirmed for Thursday at 4pm.'
+    assert:
+      - type: icontains
+        value: 'EVENT'
+      - type: icontains
+        value: 'Board meeting'
+
+  - vars:
+      message: 'Our company annual offsite takes place in Lisbon from October 15 to 19.'
+    assert:
+      - type: icontains
+        value: 'EVENT'
+      - type: icontains
+        value: 'Lisbon'
+
+  - vars:
+      message: 'Product demo presentation to the executive committee is on Wednesday 11am.'
+    assert:
+      - type: icontains
+        value: 'EVENT'
+      - type: icontains
+        value: 'Product demo'
+
+  # --- PROJECTS & TOPICS ---
+  - vars:
+      message: 'We decided to migrate the authentication service to passkeys and WebAuthn.'
+    assert:
+      - type: icontains
+        value: 'WebAuthn'
+
+  - vars:
+      message: 'Project Titan milestone 2 requires completing the GraphQL gateway rewrite.'
+    assert:
+      - type: icontains
+        value: 'Titan'
+
+  - vars:
+      message: 'We agreed to adopt Tailwind CSS v4 across the entire web application.'
+    assert:
+      - type: icontains
+        value: 'Tailwind'
+
+  - vars:
+      message: 'The zero-downtime database migration initiative is scheduled for sprint 42.'
+    assert:
+      - type: icontains
+        value: 'migration'
+
+  - vars:
+      message: 'We are redesigning the onboarding flow to reduce drop-off by 20%.'
+    assert:
+      - type: icontains
+        value: 'onboarding'
+
+  - vars:
+      message: 'Discussion on implementing local vector search in IndexedDB for TeleGenie.'
+    assert:
+      - type: icontains
+        value: 'IndexedDB'
+
+  - vars:
+      message: 'The iOS release candidate has been submitted to TestFlight for beta testing.'
+    assert:
+      - type: icontains
+        value: 'TestFlight'
+
+  - vars:
+      message: 'We have confirmed that the multi-tab leader election will use Web Locks API.'
+    assert:
+      - type: icontains
+        value: 'Web Locks'
+
+  # --- NEGATIVES & CHIT-CHAT (Suppression: Must be empty candidates) ---
+  - vars:
+      message: 'ok cool thanks'
+    assert:
+      - type: javascript
+        value: 'JSON.parse(output).candidates.length === 0'
+
+  - vars:
+      message: 'Sounds good! 👍'
+    assert:
+      - type: javascript
+        value: 'JSON.parse(output).candidates.length === 0'
+
+  - vars:
+      message: 'hahaha totally agree with that 😂'
+    assert:
+      - type: javascript
+        value: 'JSON.parse(output).candidates.length === 0'
+
+  - vars:
+      message: 'Good morning! Hope you had a nice weekend.'
+    assert:
+      - type: javascript
+        value: 'JSON.parse(output).candidates.length === 0'
+
+  - vars:
+      message: 'Let me check that real quick and get back to you.'
+    assert:
+      - type: javascript
+        value: 'JSON.parse(output).candidates.length === 0'
+
+  - vars:
+      message: 'Got it, no problem at all.'
+    assert:
+      - type: javascript
+        value: 'JSON.parse(output).candidates.length === 0'
+
+  - vars:
+      message: 'Can you resend the link? It expired.'
+    assert:
+      - type: javascript
+        value: 'JSON.parse(output).candidates.length === 0'
+
+  - vars:
+      message: 'Sure thing, bye for now!'
+    assert:
+      - type: javascript
+        value: 'JSON.parse(output).candidates.length === 0'
+
+  - vars:
+      message: 'Wait what? Really??'
+    assert:
+      - type: javascript
+        value: 'JSON.parse(output).candidates.length === 0'
+
+  - vars:
+      message: 'ping me whenever you are free.'
+    assert:
+      - type: javascript
+        value: 'JSON.parse(output).candidates.length === 0'
+

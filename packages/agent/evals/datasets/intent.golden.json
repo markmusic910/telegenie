@@ -1,0 +1,123 @@
+[
+  {
+    "question": "What do I need to follow up on today?",
+    "expectedIntent": "FOLLOW_UP"
+  },
+  {
+    "question": "Did Alice reply to my question about the contract?",
+    "expectedIntent": "FOLLOW_UP"
+  },
+  {
+    "question": "Any pending action items from yesterday's meeting?",
+    "expectedIntent": "FOLLOW_UP"
+  },
+  {
+    "question": "What tasks are waiting on my feedback?",
+    "expectedIntent": "FOLLOW_UP"
+  },
+  {
+    "question": "Did John get back to me regarding the server logs?",
+    "expectedIntent": "FOLLOW_UP"
+  },
+  {
+    "question": "What does Sarah prefer to drink during meetings?",
+    "expectedIntent": "PREFERENCE"
+  },
+  {
+    "question": "Do I prefer tabs or spaces?",
+    "expectedIntent": "PREFERENCE"
+  },
+  {
+    "question": "What is Dave's favorite editor?",
+    "expectedIntent": "PREFERENCE"
+  },
+  {
+    "question": "Does Elena like working remotely or in the office?",
+    "expectedIntent": "PREFERENCE"
+  },
+  {
+    "question": "What are my notification settings preferences?",
+    "expectedIntent": "PREFERENCE"
+  },
+  {
+    "question": "Where does Alex work?",
+    "expectedIntent": "FACT"
+  },
+  {
+    "question": "What is the Wi-Fi password for the guest network?",
+    "expectedIntent": "FACT"
+  },
+  {
+    "question": "Which city is Marcus currently based in?",
+    "expectedIntent": "FACT"
+  },
+  {
+    "question": "What version of Postgres are we running in staging?",
+    "expectedIntent": "FACT"
+  },
+  {
+    "question": "What was the date when we launched v1.0?",
+    "expectedIntent": "FACT"
+  },
+  {
+    "question": "Who is Chloe to me?",
+    "expectedIntent": "RELATIONSHIP"
+  },
+  {
+    "question": "How do I know Dr. Henderson?",
+    "expectedIntent": "RELATIONSHIP"
+  },
+  {
+    "question": "Who is the engineering manager for the frontend team?",
+    "expectedIntent": "RELATIONSHIP"
+  },
+  {
+    "question": "What is Sophia's relationship to the infrastructure project?",
+    "expectedIntent": "RELATIONSHIP"
+  },
+  {
+    "question": "When is our next all-hands meeting?",
+    "expectedIntent": "EVENT"
+  },
+  {
+    "question": "What time is my flight to Tokyo on December 3rd?",
+    "expectedIntent": "EVENT"
+  },
+  {
+    "question": "When is the deadline for the security review?",
+    "expectedIntent": "EVENT"
+  },
+  {
+    "question": "What day does the conference in Lisbon begin?",
+    "expectedIntent": "EVENT"
+  },
+  {
+    "question": "What is the status of Project Titan milestone 2?",
+    "expectedIntent": "PROJECT"
+  },
+  {
+    "question": "Who is leading the database migration initiative?",
+    "expectedIntent": "PROJECT"
+  },
+  {
+    "question": "What did we decide about adopting Tailwind CSS?",
+    "expectedIntent": "PROJECT"
+  },
+  {
+    "question": "What topics do we talk about most often in the dev channel?",
+    "expectedIntent": "TOPIC"
+  },
+  {
+    "question": "Tell me a joke about programming.",
+    "expectedIntent": "GENERAL"
+  },
+  {
+    "question": "Good morning! How are you today?",
+    "expectedIntent": "GENERAL"
+  },
+  {
+    "question": "Summarize what you know about our company in two sentences.",
+    "expectedIntent": "GENERAL"
+  }
+]
+

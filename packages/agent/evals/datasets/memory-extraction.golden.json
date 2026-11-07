@@ -1,0 +1,453 @@
+[
+  {
+    "id": "pref_01",
+    "message": "I prefer using dark mode in all my IDEs and applications.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["PREFERENCE"],
+      "subject": "me",
+      "mustContainKeywords": ["dark mode"]
+    }
+  },
+  {
+    "id": "pref_02",
+    "message": "Please don't call me before 10 AM, I prefer asynchronous communication in the morning.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["PREFERENCE"],
+      "subject": "me",
+      "mustContainKeywords": ["asynchronous"]
+    }
+  },
+  {
+    "id": "pref_03",
+    "message": "Alice mentioned she prefers coffee over tea, especially dark roast.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["PREFERENCE"],
+      "subject": "Alice",
+      "mustContainKeywords": ["coffee"]
+    }
+  },
+  {
+    "id": "pref_04",
+    "message": "I really enjoy writing TypeScript and using strict mode for all projects.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["PREFERENCE"],
+      "subject": "me",
+      "mustContainKeywords": ["TypeScript"]
+    }
+  },
+  {
+    "id": "pref_05",
+    "message": "Bob told me he hates long meetings and prefers short 15-minute standups.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["PREFERENCE"],
+      "subject": "Bob",
+      "mustContainKeywords": ["standups"]
+    }
+  },
+  {
+    "id": "pref_06",
+    "message": "My favorite terminal emulator on Mac is Ghostty.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["PREFERENCE"],
+      "subject": "me",
+      "mustContainKeywords": ["Ghostty"]
+    }
+  },
+  {
+    "id": "pref_07",
+    "message": "Carol dislikes Jira and prefers tracking tasks with Linear.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["PREFERENCE"],
+      "subject": "Carol",
+      "mustContainKeywords": ["Linear"]
+    }
+  },
+  {
+    "id": "pref_08",
+    "message": "I always use tabs instead of spaces for indentation.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["PREFERENCE"],
+      "subject": "me",
+      "mustContainKeywords": ["tabs"]
+    }
+  },
+  {
+    "id": "fact_01",
+    "message": "I work at Stripe as a principal security architect.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["FACT"],
+      "subject": "me",
+      "mustContainKeywords": ["Stripe"]
+    }
+  },
+  {
+    "id": "fact_02",
+    "message": "Dave is currently based in Zurich, Switzerland.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["FACT"],
+      "subject": "Dave",
+      "mustContainKeywords": ["Zurich"]
+    }
+  },
+  {
+    "id": "fact_03",
+    "message": "Our production database runs on PostgreSQL 16 hosted on AWS RDS.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["FACT"],
+      "mustContainKeywords": ["PostgreSQL"]
+    }
+  },
+  {
+    "id": "fact_04",
+    "message": "Sarah completed her PhD in Computer Science at Stanford.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["FACT"],
+      "subject": "Sarah",
+      "mustContainKeywords": ["Stanford"]
+    }
+  },
+  {
+    "id": "fact_05",
+    "message": "I moved to Berlin last November and got an apartment in Mitte.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["FACT"],
+      "subject": "me",
+      "mustContainKeywords": ["Berlin"]
+    }
+  },
+  {
+    "id": "fact_06",
+    "message": "Elena speaks fluent French, German, and Russian.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["FACT"],
+      "subject": "Elena",
+      "mustContainKeywords": ["French"]
+    }
+  },
+  {
+    "id": "fact_07",
+    "message": "The office address is 500 Howard Street, Suite 400, San Francisco.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["FACT"],
+      "mustContainKeywords": ["Howard Street"]
+    }
+  },
+  {
+    "id": "fact_08",
+    "message": "Marcus is the maintainer of the open-source libteleproto package.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["FACT"],
+      "subject": "Marcus",
+      "mustContainKeywords": ["libteleproto"]
+    }
+  },
+  {
+    "id": "rel_01",
+    "message": "Alex is my direct engineering manager at Acme Corp.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["RELATIONSHIP"],
+      "subject": "Alex",
+      "mustContainKeywords": ["manager"]
+    }
+  },
+  {
+    "id": "rel_02",
+    "message": "I worked with Sophia for three years on the core infrastructure team.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["RELATIONSHIP"],
+      "subject": "Sophia",
+      "mustContainKeywords": ["infrastructure"]
+    }
+  },
+  {
+    "id": "rel_03",
+    "message": "Michael introduced me to our new client, Dr. Henderson.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["RELATIONSHIP"],
+      "mustContainKeywords": ["Henderson"]
+    }
+  },
+  {
+    "id": "rel_04",
+    "message": "Chloe is my sister and she also works as a software developer.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["RELATIONSHIP"],
+      "subject": "Chloe",
+      "mustContainKeywords": ["sister"]
+    }
+  },
+  {
+    "id": "rel_05",
+    "message": "Lucas joined our team as a frontend contractor under Nina's supervision.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["RELATIONSHIP"],
+      "subject": "Lucas",
+      "mustContainKeywords": ["Nina"]
+    }
+  },
+  {
+    "id": "rel_06",
+    "message": "Victor is our point of contact at the payment vendor firm.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["RELATIONSHIP"],
+      "subject": "Victor",
+      "mustContainKeywords": ["contact"]
+    }
+  },
+  {
+    "id": "rel_07",
+    "message": "I mentor Kevin every other Tuesday on backend architecture.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["RELATIONSHIP"],
+      "subject": "Kevin",
+      "mustContainKeywords": ["mentor"]
+    }
+  },
+  {
+    "id": "rel_08",
+    "message": "Rachel and Tom co-founded the AI research lab in Cambridge.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["RELATIONSHIP"],
+      "mustContainKeywords": ["co-founded"]
+    }
+  },
+  {
+    "id": "event_01",
+    "message": "Quarterly planning sync is scheduled for next Monday at 2:00 PM EST.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["EVENT"],
+      "mustContainKeywords": ["planning"]
+    }
+  },
+  {
+    "id": "event_02",
+    "message": "The security audit deadline is set for November 20th by end of day.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["EVENT"],
+      "mustContainKeywords": ["audit"]
+    }
+  },
+  {
+    "id": "event_03",
+    "message": "My flight to Tokyo departs on December 3rd from SFO.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["EVENT"],
+      "mustContainKeywords": ["Tokyo"]
+    }
+  },
+  {
+    "id": "event_04",
+    "message": "We have an emergency release retrospective tomorrow morning at 9am.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["EVENT"],
+      "mustContainKeywords": ["retrospective"]
+    }
+  },
+  {
+    "id": "event_05",
+    "message": "Registration for NeurIPS 2026 conference closes on Friday night.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["EVENT"],
+      "mustContainKeywords": ["NeurIPS"]
+    }
+  },
+  {
+    "id": "event_06",
+    "message": "Board meeting with the venture investors is confirmed for Thursday at 4pm.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["EVENT"],
+      "mustContainKeywords": ["Board meeting"]
+    }
+  },
+  {
+    "id": "event_07",
+    "message": "Our company annual offsite takes place in Lisbon from October 15 to 19.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["EVENT"],
+      "mustContainKeywords": ["Lisbon"]
+    }
+  },
+  {
+    "id": "event_08",
+    "message": "Product demo presentation to the executive committee is on Wednesday 11am.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["EVENT"],
+      "mustContainKeywords": ["Product demo"]
+    }
+  },
+  {
+    "id": "proj_01",
+    "message": "We decided to migrate the authentication service to passkeys and WebAuthn.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["PROJECT", "TOPIC"],
+      "mustContainKeywords": ["WebAuthn"]
+    }
+  },
+  {
+    "id": "proj_02",
+    "message": "Project Titan milestone 2 requires completing the GraphQL gateway rewrite.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["PROJECT"],
+      "mustContainKeywords": ["Titan"]
+    }
+  },
+  {
+    "id": "proj_03",
+    "message": "We agreed to adopt Tailwind CSS v4 across the entire web application.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["PROJECT", "TOPIC"],
+      "mustContainKeywords": ["Tailwind"]
+    }
+  },
+  {
+    "id": "proj_04",
+    "message": "The zero-downtime database migration initiative is scheduled for sprint 42.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["PROJECT"],
+      "mustContainKeywords": ["migration"]
+    }
+  },
+  {
+    "id": "proj_05",
+    "message": "We are redesigning the onboarding flow to reduce drop-off by 20%.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["PROJECT"],
+      "mustContainKeywords": ["onboarding"]
+    }
+  },
+  {
+    "id": "proj_06",
+    "message": "Discussion on implementing local vector search in IndexedDB for TeleGenie.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["PROJECT", "TOPIC"],
+      "mustContainKeywords": ["IndexedDB"]
+    }
+  },
+  {
+    "id": "proj_07",
+    "message": "The iOS release candidate has been submitted to TestFlight for beta testing.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["PROJECT"],
+      "mustContainKeywords": ["TestFlight"]
+    }
+  },
+  {
+    "id": "proj_08",
+    "message": "We've confirmed that the multi-tab leader election will use Web Locks API.",
+    "expected": {
+      "candidateCount": { "min": 1, "max": 2 },
+      "types": ["PROJECT", "TOPIC"],
+      "mustContainKeywords": ["Web Locks"]
+    }
+  },
+  {
+    "id": "neg_01",
+    "message": "ok cool thanks",
+    "expected": {
+      "candidateCount": 0
+    }
+  },
+  {
+    "id": "neg_02",
+    "message": "Sounds good! 👍",
+    "expected": {
+      "candidateCount": 0
+    }
+  },
+  {
+    "id": "neg_03",
+    "message": "hahaha totally agree with that 😂",
+    "expected": {
+      "candidateCount": 0
+    }
+  },
+  {
+    "id": "neg_04",
+    "message": "Good morning! Hope you had a nice weekend.",
+    "expected": {
+      "candidateCount": 0
+    }
+  },
+  {
+    "id": "neg_05",
+    "message": "Let me check that real quick and get back to you.",
+    "expected": {
+      "candidateCount": 0
+    }
+  },
+  {
+    "id": "neg_06",
+    "message": "Got it, no problem at all.",
+    "expected": {
+      "candidateCount": 0
+    }
+  },
+  {
+    "id": "neg_07",
+    "message": "Can you resend the link? It expired.",
+    "expected": {
+      "candidateCount": 0
+    }
+  },
+  {
+    "id": "neg_08",
+    "message": "Sure thing, bye for now!",
+    "expected": {
+      "candidateCount": 0
+    }
+  },
+  {
+    "id": "neg_09",
+    "message": "Wait what? Really??",
+    "expected": {
+      "candidateCount": 0
+    }
+  },
+  {
+    "id": "neg_10",
+    "message": "ping me whenever you are free.",
+    "expected": {
+      "candidateCount": 0
+    }
+  }
+]
+
