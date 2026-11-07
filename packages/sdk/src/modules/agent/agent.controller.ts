@@ -38,6 +38,9 @@ export type AgentControllerOptions = {
   /** Per-tab identifier (e.g. from tab leader election or sessionStorage). */
   tabId?: string;
   getTabId?: () => string;
+  /** Account slot identifier (scoped per user/account). */
+  accountSlot?: string;
+  getAccountSlot?: () => string;
   /** Proxy Telegram auth check via the tab's SharedWorker client. */
   telegramIsAuthorized?: () => Promise<boolean>;
   /** Apply agent-driven UI updates on this tab. */
@@ -89,10 +92,13 @@ export class AgentController {
   private isModelConfigured = false;
 
   constructor(options: AgentControllerOptions = {}) {
-    const tabId = options.tabId ?? options.getTabId?.() ?? getTabId();
     this.worker =
       options.createWorkerClient?.() ??
-      createLazyAgentWorkerClient(() => createDefaultAgentWorker({ tabId }));
+      createLazyAgentWorkerClient(() => {
+        const tabId = options.tabId ?? options.getTabId?.() ?? getTabId();
+        const accountSlot = options.accountSlot ?? options.getAccountSlot?.() ?? 'default';
+        return createDefaultAgentWorker({ tabId, accountSlot });
+      });
 
     this.isLeader = options.isLeader ?? (() => false);
     this.getBackendBaseUrl = options.getBackendBaseUrl;

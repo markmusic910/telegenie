@@ -52,7 +52,7 @@ TeleGenie uses five browser contexts. Do not collapse them or invent another wit
 |---|---|---|---|---|
 | Main tab (SDK + UI) | `packages/sdk` | Per tab | worker-rpc to TG, Agent, and RLottie; hosts `LeaderTabApi` (if leader) & `TabPageApi`; `BroadcastChannel` | `localStorage`, `telegenie-sdk-cache_${accountSlot}` (IDB) |
 | Telegram `SharedWorker` (`telegenie-telegram`) | `packages/libs/.../telegram/worker` | **One** shared Telegram + LocalDb for origin | worker-rpc host for tabs & SW; update fan-out | `telegenie-telegram_${accountSlot}` (IDB) |
-| Agent DedicatedWorker (`telegenie-agent`) | `packages/agent` | **Per tab** — Genie/chat/crypto stay here | worker-rpc host (`AgentWorkerApi`) & client (`TabPageApi`) | `telegenie-memory_${accountSlot}` (IDB), `telegenie-agent_${tabId}` (IDB) |
+| Agent DedicatedWorker (`telegenie-agent`) | `packages/agent` | **Per tab** — Genie/chat/crypto stay here | worker-rpc host (`AgentWorkerApi`) & client (`TabPageApi`) | `telegenie-memory_${accountSlot}` (IDB), `telegenie-agent_${accountSlot}` (IDB) |
 | RLottie DedicatedWorkers (`telegenie-rlottie:N`) | `apps/web/src/lib/rlottie` | **Per tab**, pool of at most 4. Custom-emoji `.tgs` decode only | worker-rpc host (`RLottieWorkerApi`: `init`, `render`, `destroy`). Main tab is the client | none. Fetches `.tgs` from the page (`/media/` uses the SW cache). WASM glue stays in `apps/web/public/rlottie` |
 | Service Worker (`/sw.js`) | `packages/sw` | Origin PWA shell | worker-rpc client to TG SW (`file.getPart`) & Leader Tab; BroadcastChannel observer | `CacheStorage` (`v1-assets`, `v1-media`, `pwa-shell`) |
 
@@ -136,12 +136,12 @@ TeleGenie uses five browser contexts. Do not collapse them or invent another wit
 - **Leader-Only Extraction**: Memory extraction (`MemoryEngine.processMessages`) is CPU/LLM intensive and MUST run **only on the elected leader tab**. `AgentController.processNewMessages` checks `isLeader()` before dispatching to its DedicatedWorker.
 - **Dual IndexedDB Namespace**:
   - `telegenie-memory_${accountSlot}` — shared memory store across all tabs for an account. Stores `entities`, `memories`, `memory_sources`, `embeddings`.
-  - `telegenie-agent_${tabId}` — per-tab agent state store (`agent_runs`, `agent_messages`, `tool_calls`, `agent_checkpoints`, `dialog_presets`). Tab ID namespacing prevents run history conflicts across tabs.
+  - `telegenie-agent_${accountSlot}` — shared agent state store across all tabs for an account (`agent_runs`, `agent_messages`, `tool_calls`, `agent_checkpoints`, `dialog_presets`). Preserves conversation history and user presets across tabs and browser restarts.
 - **Idempotency & Traceability**:
   - Every `Memory` record MUST have ≥1 `MemorySource` referencing `messageId` (`${peerId}:${messageId}`).
   - `MemoryConsolidator` checks `memory_sources.messageId` before extraction to prevent duplicate processing if tab leadership changes mid-sync.
 - **Stale Agent Run Cleanup**:
-  - On agent worker startup (`cleanupAgentDb`), `agent_runs` older than 7 days are hard-deleted along with orphaned `agent_messages`, `tool_calls`, and `agent_checkpoints`.
+  - On agent worker startup (`cleanupAgentDb`), `agent_runs` older than 30 days are hard-deleted along with orphaned `agent_messages`, `tool_calls`, and `agent_checkpoints`.
   - Permanent user settings (`dialog_presets`) and `telegenie-memory` records are **never hard-pruned** automatically during cleanup.
 - **API Responsibility Boundary**:
   - `AgentWorkerApi`: Data transfer (Telegram message records, chat prompts, model config).

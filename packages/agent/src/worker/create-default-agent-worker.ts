@@ -3,14 +3,16 @@ import { createAgentWorkerClient, type AgentWorkerClient } from './create-agent-
 
 export type CreateDefaultAgentWorkerOptions = {
   tabId?: string;
+  accountSlot?: string;
 };
 
 /**
  * Browser/Turbopack entry: static `new URL(..., import.meta.url)` so the bundler
  * emits a dedicated agent worker chunk (one per tab).
  *
- * Tab ID is passed via the worker `name` property (`telegenie-agent:${tabId}`)
- * so the DedicatedWorker can read it synchronously on startup via `self.name`.
+ * Account slot and tab ID are passed via the worker `name` property
+ * (`telegenie-agent:${accountSlot}:${tabId}`) so the DedicatedWorker can read them
+ * synchronously on startup via `self.name`.
  */
 export function createDefaultAgentWorker(
   options: CreateDefaultAgentWorkerOptions = {},
@@ -19,8 +21,8 @@ export function createDefaultAgentWorker(
     throw new Error('createDefaultAgentWorker requires a browser Worker environment');
   }
   const tabId = options.tabId || getTabId();
-  const workerName =
-    tabId && tabId !== 'unknown-tab' ? `telegenie-agent:${tabId}` : 'telegenie-agent';
+  const accountSlot = options.accountSlot || 'default';
+  const workerName = `telegenie-agent:${accountSlot}:${tabId || 'unknown-tab'}`;
 
   return createAgentWorkerClient({
     createWorker: () =>

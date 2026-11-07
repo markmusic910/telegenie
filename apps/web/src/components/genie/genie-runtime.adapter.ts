@@ -22,7 +22,7 @@ export type GenieRuntimeOptions = {
 /**
  * Creates an assistant-ui runtime connected to TeleGenie's Agent DedicatedWorker.
  * Streams partial tokens in real-time via TabPageApi.streamToken and stores
- * runs & messages in IndexedDB (telegenie-agent_${tabId}).
+ * runs & messages in IndexedDB (telegenie-agent_${accountSlot}).
  */
 export function useGenieRuntime({
   peerId,

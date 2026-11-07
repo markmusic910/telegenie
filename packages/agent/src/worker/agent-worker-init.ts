@@ -39,19 +39,34 @@ export type AgentWorkerState = {
 let _state: AgentWorkerState | undefined;
 
 /**
- * Extract tabId from self.name (passed via Worker constructor options.name).
+ * Parse worker identity from self.name (formatted as `telegenie-agent:${accountSlot}:${tabId}`).
  */
-export function resolveWorkerTabId(): string | undefined {
+export function parseWorkerName(): { accountSlot?: string; tabId?: string } {
   if (typeof self !== 'undefined' && typeof self.name === 'string') {
     const prefix = 'telegenie-agent:';
     if (self.name.startsWith(prefix)) {
-      return self.name.slice(prefix.length);
-    }
-    if (self.name && self.name !== 'telegenie-agent') {
-      return self.name;
+      const [accountSlot, tabId] = self.name.slice(prefix.length).split(':');
+      return {
+        accountSlot: accountSlot || undefined,
+        tabId: tabId || undefined,
+      };
     }
   }
-  return undefined;
+  return {};
+}
+
+/**
+ * Extract accountSlot from self.name.
+ */
+export function resolveWorkerAccountSlot(): string | undefined {
+  return parseWorkerName().accountSlot;
+}
+
+/**
+ * Extract tabId from self.name.
+ */
+export function resolveWorkerTabId(): string | undefined {
+  return parseWorkerName().tabId;
 }
 
 /**
@@ -60,15 +75,16 @@ export function resolveWorkerTabId(): string | undefined {
  * MemoryEngine requires the LLM model, so it is initialized lazily in configureModel.
  */
 export async function initAgentWorker(
-  accountSlot = 'default',
+  explicitAccountSlot?: string,
   explicitTabId?: string,
 ): Promise<AgentWorkerState> {
+  const accountSlot = explicitAccountSlot || resolveWorkerAccountSlot() || 'default';
   const tabId = explicitTabId || resolveWorkerTabId() || getTabId();
 
   const memoryDb = new MemoryDb({ accountSlot });
   await memoryDb.open();
 
-  const agentDb = new AgentDb({ tabId });
+  const agentDb = new AgentDb({ accountSlot });
   await agentDb.open();
 
   // Cleanup stale agent runs on startup

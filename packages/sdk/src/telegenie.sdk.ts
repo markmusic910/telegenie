@@ -128,6 +128,7 @@ export class TeleGenieSDK {
   readonly broadcast: BroadcastBus;
 
   private _initialized = false;
+  private _accountSlot = 'default';
   private readonly debug: boolean;
   private readonly worker: TelegramWorkerClient;
   private storeCache: StoreCache | undefined;
@@ -274,6 +275,7 @@ export class TeleGenieSDK {
     });
     this.agent = new AgentController({
       getTabId: () => this.tabLeader.tabId,
+      getAccountSlot: () => this.accountSlot,
       isLeader: () => this.tabLeader.isLeader,
       telegramIsAuthorized: () => this.worker.call('auth.isAuthorized', []),
       getBackendBaseUrl: () => this.auth.getBackendBaseUrl(),
@@ -295,6 +297,10 @@ export class TeleGenieSDK {
 
   get isInitialized() {
     return this._initialized;
+  }
+
+  get accountSlot(): string {
+    return this._accountSlot;
   }
 
   ensureMessageStore(peerId: string): MessageStore {
@@ -412,6 +418,7 @@ export class TeleGenieSDK {
       backendBotUsername,
       ...credentials
     } = options;
+    this._accountSlot = accountSlot;
     if (apiBaseUrl) {
       this.auth.setApiBaseUrl(apiBaseUrl);
     }

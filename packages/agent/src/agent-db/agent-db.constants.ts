@@ -1,6 +1,7 @@
 /**
- * IndexedDB for Agent State — namespaced per-tab to avoid cross-tab conflicts.
- * Full name: `${AGENT_DB_PREFIX}${tabId}`
+ * IndexedDB for Agent State — namespaced per account slot so conversation history
+ * and presets persist across tabs and browser restarts for the current user.
+ * Full name: `${AGENT_DB_PREFIX}${accountSlot}`
  */
 export const AGENT_DB_PREFIX = 'telegenie-agent_';
 
@@ -8,7 +9,7 @@ export const AGENT_DB_PREFIX = 'telegenie-agent_';
 export const AGENT_DB_VERSION = 1;
 
 /** Agent run records older than this many days are auto-deleted on worker startup. */
-export const AGENT_RUN_TTL_DAYS = 7;
+export const AGENT_RUN_TTL_DAYS = 30;
 
 export const AGENT_STORE = {
   agentRuns: 'agent_runs',

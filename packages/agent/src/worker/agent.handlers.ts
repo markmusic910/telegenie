@@ -105,7 +105,7 @@ export function createAgentWorkerHandlers(): RpcHandlers<AgentWorkerApi> {
           }
         }
       } else {
-        // 1. Record a new agent run in IndexedDB (telegenie-agent_${tabId})
+        // 1. Record a new agent run in IndexedDB (telegenie-agent_${accountSlot})
         const run = await agentRunRepo.create(userMessage, {
           model: opts.model,
           presetId: opts.presetId,

@@ -4,8 +4,8 @@ import { AGENT_DB_PREFIX, AGENT_DB_VERSION } from './agent-db.constants';
 import { buildAgentDbStores } from './agent-db.types';
 
 export type AgentDbOptions = {
-  /** Per-tab identifier — use `getTabId()` from `@telegenie/decorators`. */
-  tabId: string;
+  /** Account slot identifier (e.g. 'default', '0') — scoped per user/account. */
+  accountSlot?: string;
   factory?: IDBFactory;
   flushDelayMs?: number;
   maxBatchSize?: number;
@@ -13,15 +13,16 @@ export type AgentDbOptions = {
 
 /**
  * Thin IdbManager wrapper for the Agent State IndexedDB.
- * Namespaced per-tab: `telegenie-agent_${tabId}`.
- * This prevents cross-tab conflicts since each tab's agent runs are independent.
+ * Namespaced per user/account slot: `telegenie-agent_${accountSlot}`.
+ * Allows conversation history and dialog presets to persist across tabs and browser restarts.
  */
 export class AgentDb {
   private readonly idb: IdbManager;
 
-  constructor(options: AgentDbOptions) {
+  constructor(options: AgentDbOptions = {}) {
+    const slot = options.accountSlot || 'default';
     this.idb = new IdbManager({
-      name: `${AGENT_DB_PREFIX}${options.tabId}`,
+      name: `${AGENT_DB_PREFIX}${slot}`,
       version: AGENT_DB_VERSION,
       stores: buildAgentDbStores(),
       factory: options.factory,
