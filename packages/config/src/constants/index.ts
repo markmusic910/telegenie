@@ -16,3 +16,15 @@ export const BACKEND_BOT_USERNAME = 'telegenie_ai';
 export const DEFAULT_APP_NAME = 'TeleGenie';
 export const DEFAULT_APP_VERSION = '1.0.0';
 export const DEFAULT_APP_ENVIRONMENT = 'development';
+
+// AI / LLM Configuration
+export type LLMProvider = 'Google' | 'Anthropic' | 'OpenAI';
+export const DEFAULT_MODEL_ID = 'gpt-4o';
+
+export function resolveModelProvider(model: string, explicitProvider?: LLMProvider): LLMProvider {
+  if (explicitProvider) return explicitProvider;
+  const lower = model.toLowerCase();
+  if (lower.startsWith('gemini')) return 'Google';
+  if (lower.startsWith('claude') || lower.includes('sonnet') || lower.includes('haiku')) return 'Anthropic';
+  return 'OpenAI';
+}

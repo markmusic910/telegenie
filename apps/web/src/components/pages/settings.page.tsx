@@ -4,6 +4,7 @@ import AppNavBar from '@/components/main/app-nav.bar';
 import RecentReactionsDialog from '@/components/settings/recent-reactions.dialog';
 import StickerSetDialog from '@/components/settings/sticker-set.dialog';
 import TeleGenieGeneralDetail from '@/components/settings/telegenie-general.detail';
+import TeleGenieMemoryDetail from '@/components/settings/telegenie-memory.detail';
 import TeleGenieSkillEditorDetail from '@/components/settings/telegenie-skill-editor.detail';
 import TeleGenieSkillsListDetail from '@/components/settings/telegenie-skills-list.detail';
 import PeerAvatar from '@/lib/components/peer.avatar';
@@ -21,7 +22,7 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 
 export type SettingsSection = 'profile' | 'stickers' | 'telegenie';
-export type TeleGenieSubSection = 'general' | 'skills-list' | 'skill-detail';
+export type TeleGenieSubSection = 'general' | 'skills-list' | 'skill-detail' | 'memory';
 
 export interface SettingsPageProps {
   section: SettingsSection;
@@ -161,6 +162,8 @@ const SettingsPage = observer(function SettingsPage({
             <TeleGenieSkillsListDetail />
           ) : subSection === 'skill-detail' && skillId ? (
             <TeleGenieSkillEditorDetail skillId={skillId} />
+          ) : subSection === 'memory' ? (
+            <TeleGenieMemoryDetail />
           ) : (
             <TeleGenieGeneralDetail />
           )}

@@ -1,5 +1,5 @@
 import { Annotation, MessagesAnnotation } from '@langchain/langgraph';
-import type { Memory, Commitment } from '../memory/db/memory-db.types';
+import type { Memory } from '../memory/db/memory-db.types';
 import type { AgentMessageRecord } from '../types/agent-message-record';
 
 /**
@@ -9,7 +9,6 @@ import type { AgentMessageRecord } from '../types/agent-message-record';
  * - `messages` — full conversation history (from MessagesAnnotation)
  * - `intent` — classified intent string (e.g. "FOLLOW_UP", "PREFERENCE", "FACT")
  * - `retrievedMemories` — memories retrieved from telegenie-memory DB
- * - `retrievedCommitments` — commitments retrieved from telegenie-memory DB
  * - `retrievedMessages` — raw Telegram messages retrieved from telegenie-sdk-cache
  * - `runId` — the AgentRun.id written to telegenie-agent DB for audit
  */
@@ -20,10 +19,6 @@ export const AgentStateAnnotation = Annotation.Root({
     default: () => '',
   }),
   retrievedMemories: Annotation<Memory[]>({
-    reducer: (_, next) => next,
-    default: () => [],
-  }),
-  retrievedCommitments: Annotation<Commitment[]>({
     reducer: (_, next) => next,
     default: () => [],
   }),

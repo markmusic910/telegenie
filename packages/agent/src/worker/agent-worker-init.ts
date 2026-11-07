@@ -10,11 +10,11 @@ import { createChatModel, setModelConfig, type ModelConfig } from '../agent/mode
 import { initNodes } from '../agent/nodes';
 import { MemoryDb } from '../memory/db/memory-db';
 import { MemoryEngine } from '../memory/engine/memory-engine';
-import { CommitmentRepository } from '../memory/repository/commitment.repository';
 import { EmbeddingRepository } from '../memory/repository/embedding.repository';
 import { EntityRepository } from '../memory/repository/entity.repository';
 import { MemorySourceRepository } from '../memory/repository/memory-source.repository';
 import { MemoryRepository } from '../memory/repository/memory.repository';
+import { DialogMemorySyncRepository } from '../memory/repository/dialog-memory-sync.repository';
 import { Retriever } from '../runtime/retriever';
 
 export type AgentWorkerState = {
@@ -23,9 +23,9 @@ export type AgentWorkerState = {
   entityRepo: EntityRepository;
   memoryRepo: MemoryRepository;
   memorySourceRepo: MemorySourceRepository;
-  commitmentRepo: CommitmentRepository;
   embeddingRepo: EmbeddingRepository;
   dialogPresetRepo: DialogPresetRepository;
+  dialogMemorySyncRepo: DialogMemorySyncRepository;
   agentRunRepo: AgentRunRepository;
   agentMessageRepo: AgentMessageRepository;
   memoryEngine: MemoryEngine | undefined; // only initialized after configureModel
@@ -77,16 +77,15 @@ export async function initAgentWorker(
   const entityRepo = new EntityRepository(memoryDb);
   const memoryRepo = new MemoryRepository(memoryDb);
   const memorySourceRepo = new MemorySourceRepository(memoryDb);
-  const commitmentRepo = new CommitmentRepository(memoryDb);
   const embeddingRepo = new EmbeddingRepository(memoryDb);
   const dialogPresetRepo = new DialogPresetRepository(agentDb);
+  const dialogMemorySyncRepo = new DialogMemorySyncRepository(memoryDb);
   const agentRunRepo = new AgentRunRepository(agentDb);
   const agentMessageRepo = new AgentMessageRepository(agentDb);
 
   const retriever = new Retriever({
     accountSlot,
     memoryRepository: memoryRepo,
-    commitmentRepository: commitmentRepo,
     entityRepository: entityRepo,
     dialogPresetRepository: dialogPresetRepo,
   });
@@ -103,9 +102,9 @@ export async function initAgentWorker(
     entityRepo,
     memoryRepo,
     memorySourceRepo,
-    commitmentRepo,
     embeddingRepo,
     dialogPresetRepo,
+    dialogMemorySyncRepo,
     agentRunRepo,
     agentMessageRepo,
     memoryEngine: undefined,
@@ -135,11 +134,11 @@ export function configureAgentModel(
 
   try {
     _state.memoryEngine = new MemoryEngine({
-      model: createChatModel(),
+      createModel: (costSource?: string) =>
+        createChatModel({ costSource: costSource ?? 'memory extraction' }),
       entityRepository: _state.entityRepo,
       memoryRepository: _state.memoryRepo,
       memorySourceRepository: _state.memorySourceRepo,
-      commitmentRepository: _state.commitmentRepo,
     });
   } catch (err) {
     console.warn('[AgentWorker] MemoryEngine initialization deferred (API key pending):', err);

@@ -23,8 +23,11 @@ jest.mock('@/components/main/middle-column/delete-message.dialog', () => ({
     open ? <div data-testid="delete-dialog">{messageIds.join(',')}</div> : null,
 }));
 
-jest.mock('@/lib/components/ui/toast', () => ({
-  toastManager: { add: (...args: unknown[]) => toastAdd(...args) },
+jest.mock('sonner', () => ({
+  toast: {
+    success: (...args: unknown[]) => toastAdd(...args),
+    error: (...args: unknown[]) => toastAdd(...args),
+  },
 }));
 
 jest.mock('@/lib/contexts/sdk.context', () => ({

@@ -1,6 +1,6 @@
 'use client';
 
-import { toastManager } from '@/lib/components/ui/toast';
+import { toast } from 'sonner';
 import { useCallback, type MouseEvent } from 'react';
 
 export function useCopyMessageId(messageId: string | undefined) {
@@ -12,16 +12,10 @@ export function useCopyMessageId(messageId: string | undefined) {
       event.preventDefault();
       void navigator.clipboard.writeText(messageId).then(
         () => {
-          toastManager.add({
-            type: 'success',
-            title: 'copy message id succeed',
-          });
+          toast.success('copy message id succeed');
         },
         () => {
-          toastManager.add({
-            type: 'error',
-            title: 'copy message id failed',
-          });
+          toast.error('copy message id failed');
         },
       );
     },

@@ -3,6 +3,7 @@ export { messageCacheKey } from './persist/constants';
 export { StoreCache } from './persist/store.cache';
 export { default as StoreManager } from './store.manager';
 export type {
+  AgentSliceView,
   AuthSliceView,
   EntityStoreView,
   GlobalStoreView,

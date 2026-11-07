@@ -15,6 +15,7 @@ import type { DialogUIState } from './global/models/dialog.state';
 import type { LeaderState } from './global/models/leader.state';
 import type { NavState } from './global/models/nav.state';
 import type { StickersState } from './global/models/stickers.state';
+import type { AgentState } from './global/models/agent.state';
 import type { ThreadUIState } from './global/models/thread.state';
 import type { UserEntity } from './types';
 import type { StoreName } from './types/store';
@@ -58,11 +59,14 @@ export type NavSliceView = NavState;
 
 export type StickersSliceView = StickersState;
 
+export type AgentSliceView = AgentState;
+
 export interface GlobalStoreView {
   readonly auth: AuthSliceView;
   readonly leader: LeaderSliceView;
   readonly nav: NavSliceView;
   readonly stickers: StickersSliceView;
+  readonly agent: AgentSliceView;
   readonly dialogs: {
     get(peerId: string): DialogUIState | undefined;
     has(peerId: string): boolean;

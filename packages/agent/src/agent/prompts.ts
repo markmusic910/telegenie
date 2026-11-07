@@ -4,18 +4,17 @@
 
 export const SYSTEM_PROMPT = `You are TeleGenie, a personal AI assistant with access to the user's Telegram conversation history and extracted memory.
 
-Your role is to answer questions about people, commitments, preferences, facts, and events derived from the user's messages.
+Your role is to answer questions about people, preferences, facts, events, and projects derived from the user's messages.
 
 Guidelines:
 - Always ground your answers in the retrieved context provided. Do not fabricate information.
-- When referencing a commitment or promise, mention who made it and when if known.
 - If context is insufficient, say so clearly rather than guessing.
 - Be concise and precise. Avoid filler phrases.
 - Dates should be expressed in a human-readable format.`;
 
 export const INTENT_CLASSIFICATION_PROMPT = `Classify the user's question into exactly one of the following intent categories:
 
-FOLLOW_UP — asking about commitments, promises, or pending items (e.g. "What did John promise?", "What do I need to follow up on?")
+FOLLOW_UP — asking about follow-ups, pending matters, or recent status (e.g. "What do I need to follow up on?")
 PREFERENCE — asking about someone's preferences, likes, or dislikes
 FACT — asking for a factual claim about a person or organization (e.g. "Where does John work?")
 RELATIONSHIP — asking about how people relate to each other

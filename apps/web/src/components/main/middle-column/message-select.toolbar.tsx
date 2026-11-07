@@ -6,7 +6,7 @@ import { useState } from 'react';
 
 import DeleteMessageDialog from '@/components/main/middle-column/delete-message.dialog';
 import { Button } from '@/lib/components/ui/button';
-import { toastManager } from '@/lib/components/ui/toast';
+import { toast } from 'sonner';
 import {
   useDialogPeer,
   useGlobalStoreDialog,
@@ -60,10 +60,10 @@ const MessageSelectToolbar = observer(function MessageSelectToolbar({
     const text = sdk.messageSelect.copyText(peerId, threadId);
     void navigator.clipboard.writeText(text).then(
       () => {
-        toastManager.add({ type: 'success', title: 'Copied' });
+        toast.success('Copied');
         exit();
       },
-      () => toastManager.add({ type: 'error', title: 'Copy failed' }),
+      () => toast.error('Copy failed'),
     );
   };
 

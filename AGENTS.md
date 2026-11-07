@@ -135,7 +135,7 @@ TeleGenie uses five browser contexts. Do not collapse them or invent another wit
 
 - **Leader-Only Extraction**: Memory extraction (`MemoryEngine.processMessages`) is CPU/LLM intensive and MUST run **only on the elected leader tab**. `AgentController.processNewMessages` checks `isLeader()` before dispatching to its DedicatedWorker.
 - **Dual IndexedDB Namespace**:
-  - `telegenie-memory_${accountSlot}` — shared memory store across all tabs for an account. Stores `entities`, `memories`, `memory_sources`, `commitments`, `embeddings`.
+  - `telegenie-memory_${accountSlot}` — shared memory store across all tabs for an account. Stores `entities`, `memories`, `memory_sources`, `embeddings`.
   - `telegenie-agent_${tabId}` — per-tab agent state store (`agent_runs`, `agent_messages`, `tool_calls`, `agent_checkpoints`, `dialog_presets`). Tab ID namespacing prevents run history conflicts across tabs.
 - **Idempotency & Traceability**:
   - Every `Memory` record MUST have ≥1 `MemorySource` referencing `messageId` (`${peerId}:${messageId}`).

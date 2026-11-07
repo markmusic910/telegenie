@@ -1109,7 +1109,8 @@ export class MessageLoadController {
   }
 
   @RequestLog()
-  private async loadHistory(
+  @Method()
+  async loadHistory(
     peerId: string,
     opts: LoadHistoryOptions,
   ): Promise<{ messages: Message[]; count?: number }> {

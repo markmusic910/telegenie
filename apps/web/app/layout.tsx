@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { AppInitializer } from '@/components';
 import { ToastProvider } from '@/lib/components/ui/toast';
+import { Toaster } from '@/lib/components/ui/sonner';
 import { SDKProvider } from '@/lib/contexts/sdk.context';
 import { Inter, Geist_Mono } from "next/font/google";
 import { cn } from "@/lib/utils";
@@ -40,8 +41,9 @@ export default function RootLayout({
       </head>
       <body>
         <SDKProvider>
-          <ToastProvider position="top-center">
+          <ToastProvider position="top-right">
             <AppInitializer>{children}</AppInitializer>
+            <Toaster position="top-right" richColors closeButton />
           </ToastProvider>
         </SDKProvider>
       </body>

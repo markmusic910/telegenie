@@ -16,5 +16,8 @@ export {
   type TabLeaderChallengePayload,
   type TabLeaderClaimPayload,
   type TabLeaderResignPayload,
+  type TabMemorySyncRequestPayload,
+  type TabMemorySyncProgressPayload,
+  type TabMemorySyncCompletePayload,
   type TabMsgType,
 } from './tab-messages';

@@ -10,7 +10,7 @@ export const DEFAULT_SKILLS: GenieSkill[] = [
     content: `When asked to summarize or recap:
 - Extract all key decisions made.
 - List concrete action items with assignees (if mentioned).
-- Note deadlines, commitments, and open follow-up questions.
+- Note deadlines, deliverables, and open follow-up questions.
 - Keep the summary structured with bullet points.`,
     createdAt: 1700000000000,
     updatedAt: 1700000000000,
@@ -40,12 +40,12 @@ export const DEFAULT_SKILLS: GenieSkill[] = [
   },
   {
     id: 'task-extractor',
-    title: 'Task & Commitment Extractor',
-    description: 'Identify promises, deadlines, and commitments made by either party in the chat.',
-    content: `Scan the dialogue for commitments:
-- Identify who promised what to whom.
+    title: 'Task & Action Item Extractor',
+    description: 'Identify action items, deliverables, and deadlines mentioned in the chat.',
+    content: `Scan the dialogue for actionable tasks:
+- Identify who is responsible for what.
 - Highlight explicit and implicit deadlines.
-- Format each commitment as: [Who] will [Do What] by [When].`,
+- Format each item as: [Who] will [Do What] by [When].`,
     createdAt: 1700000000000,
     updatedAt: 1700000000000,
   },

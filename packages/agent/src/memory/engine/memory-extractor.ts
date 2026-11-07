@@ -7,19 +7,16 @@ import type { AgentMessageRecord } from '../../types/agent-message-record';
 // ---------------------------------------------------------------------------
 
 export const ExtractionCandidateSchema = z.object({
-  type: z.enum(['FACT', 'PREFERENCE', 'RELATIONSHIP', 'COMMITMENT', 'EVENT', 'PROJECT', 'TOPIC']),
+  type: z.enum(['FACT', 'PREFERENCE', 'RELATIONSHIP', 'EVENT', 'PROJECT', 'TOPIC']),
   subject: z.string().describe('Name of the primary person or entity this memory is about'),
   predicate: z
     .string()
     .optional()
-    .describe('Semantic relationship verb, e.g. "works_at", "prefers", "will_send"'),
+    .describe('Semantic relationship verb, e.g. "works_at", "prefers"'),
   object: z
     .string()
     .optional()
     .describe('Name of the secondary entity or plain-text value'),
-  /** ISO date string or unix ms. Optional. */
-  dueAt: z.number().optional().describe('Unix ms deadline for commitments'),
-  action: z.string().optional().describe('Action verb for COMMITMENT type'),
   confidence: z.number().min(0).max(1),
   importance: z.number().min(0).max(1),
   content: z.string().describe('Human-readable summary of the memory'),
@@ -37,15 +34,13 @@ const ExtractionResultSchema = z.object({
 // Extraction prompt
 // ---------------------------------------------------------------------------
 
-const EXTRACTION_SYSTEM = `You are a memory extraction assistant. Given a Telegram message, extract all semantically meaningful facts, preferences, commitments, relationships, events, projects, and recurring topics.
+const EXTRACTION_SYSTEM = `You are a memory extraction assistant. Given a Telegram message, extract all semantically meaningful facts, preferences, relationships, events, projects, and recurring topics.
 
 Output ONLY a JSON object with a "candidates" array. Each candidate must have:
-- type: one of FACT, PREFERENCE, RELATIONSHIP, COMMITMENT, EVENT, PROJECT, TOPIC
+- type: one of FACT, PREFERENCE, RELATIONSHIP, EVENT, PROJECT, TOPIC
 - subject: name of the primary person or entity
-- predicate: optional semantic relationship (e.g. "works_at", "prefers", "will_send")
+- predicate: optional semantic relationship (e.g. "works_at", "prefers")
 - object: optional secondary entity or plain value
-- action: only for COMMITMENT — the action verb (e.g. "send", "call")
-- dueAt: only for COMMITMENT with a deadline — unix milliseconds
 - confidence: 0.0 to 1.0
 - importance: 0.0 to 1.0 (how useful for future reference)
 - content: human-readable one-sentence summary

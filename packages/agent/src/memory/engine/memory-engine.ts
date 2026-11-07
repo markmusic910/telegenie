@@ -6,15 +6,18 @@ import { MemoryConsolidator } from './memory-consolidator';
 import type { EntityRepository } from '../repository/entity.repository';
 import type { MemoryRepository } from '../repository/memory.repository';
 import type { MemorySourceRepository } from '../repository/memory-source.repository';
-import type { CommitmentRepository } from '../repository/commitment.repository';
 import type { AgentMessageRecord } from '../../types/agent-message-record';
 
 export type MemoryEngineOptions = {
-  model: BaseChatModel;
+  model?: BaseChatModel;
+  createModel?: (costSource?: string) => BaseChatModel;
   entityRepository: EntityRepository;
   memoryRepository: MemoryRepository;
   memorySourceRepository: MemorySourceRepository;
-  commitmentRepository: CommitmentRepository;
+};
+
+export type ProcessMessagesOptions = {
+  costSource?: string;
 };
 
 export type ProcessMessagesResult = {
@@ -38,22 +41,35 @@ export type ProcessMessagesResult = {
  * Idempotent: MemoryConsolidator checks memory_sources.messageId before writing.
  */
 export class MemoryEngine {
-  private readonly extractor: MemoryExtractor;
+  private readonly defaultExtractor: MemoryExtractor;
+  private readonly createModel?: (costSource?: string) => BaseChatModel;
   private readonly resolver: EntityResolver;
   private readonly consolidator: MemoryConsolidator;
 
   constructor(options: MemoryEngineOptions) {
-    this.extractor = new MemoryExtractor(options.model);
+    const model = options.model ?? options.createModel?.('memory extraction');
+    if (!model) {
+      throw new Error('MemoryEngine requires either model or createModel');
+    }
+    this.defaultExtractor = new MemoryExtractor(model);
+    this.createModel = options.createModel;
     this.resolver = new EntityResolver(options.entityRepository);
     this.consolidator = new MemoryConsolidator(
       options.memoryRepository,
       options.memorySourceRepository,
-      options.commitmentRepository,
       this.resolver,
     );
   }
 
-  async processMessages(messages: AgentMessageRecord[]): Promise<ProcessMessagesResult> {
+  async processMessages(
+    messages: AgentMessageRecord[],
+    options?: ProcessMessagesOptions,
+  ): Promise<ProcessMessagesResult> {
+    const extractor =
+      options?.costSource && this.createModel
+        ? new MemoryExtractor(this.createModel(options.costSource))
+        : this.defaultExtractor;
+
     const result: ProcessMessagesResult = {
       processed: 0,
       skipped: 0,
@@ -77,7 +93,7 @@ export class MemoryEngine {
       result.processed++;
 
       // LLM extraction
-      const candidates = await this.extractor.extract(message);
+      const candidates = await extractor.extract(message);
       if (candidates.length === 0) continue;
 
       // Consolidate (dedup + persist)

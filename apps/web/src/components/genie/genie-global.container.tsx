@@ -156,8 +156,9 @@ export const GenieGlobalContainer = observer(function GenieGlobalContainer({
 }: GenieGlobalContainerProps) {
   const router = useRouter();
   const sdk = useSDK();
+  const globalStore = useStore('global');
   const [activeTab, setActiveTab] = useState<GenieSidebarTab>('NEW_CHAT');
-  const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL_ID);
+  const selectedModel = globalStore.agent.selectedModel;
   const currentModelOption =
     SUPPORTED_MODELS.find((m) => m.name === selectedModel || m.id === selectedModel) ||
     SUPPORTED_MODELS[0];
@@ -272,7 +273,6 @@ export const GenieGlobalContainer = observer(function GenieGlobalContainer({
   }, [sdk, refreshHistory]);
 
   // Reactively track currently selected dialog from left column
-  const globalStore = useStore('global');
   const selectedDialogId = globalStore.nav.selectedDialogId;
   const [clearedPeerId, setClearedPeerId] = useState<string | null>(null);
 
@@ -420,7 +420,7 @@ export const GenieGlobalContainer = observer(function GenieGlobalContainer({
     if (preset?.model) {
       const modelOpt = SUPPORTED_MODELS.find((m) => m.id === preset.model);
       if (modelOpt) {
-        setSelectedModel(modelOpt.name);
+        sdk.agent.setSelectedModel(modelOpt.id);
       }
     }
   };
@@ -610,14 +610,14 @@ export const GenieGlobalContainer = observer(function GenieGlobalContainer({
                 </Button>
                 <select
                   value={selectedModel}
-                  onChange={(e) => setSelectedModel(e.target.value)}
+                  onChange={(e) => sdk.agent.setSelectedModel(e.target.value)}
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer font-sans text-xs text-foreground"
                   aria-label="Switch Model"
                 >
                   {MODEL_PROVIDERS.map((provider) => (
                     <optgroup key={provider} label={provider}>
                       {SUPPORTED_MODELS.filter((m) => m.provider === provider).map((m) => (
-                        <option key={m.id} value={m.name}>
+                        <option key={m.id} value={m.id}>
                           {m.name}
                         </option>
                       ))}
@@ -684,7 +684,7 @@ export const GenieGlobalContainer = observer(function GenieGlobalContainer({
                             </div>
                             <select
                               value={selectedModel}
-                              onChange={(e) => setSelectedModel(e.target.value)}
+                              onChange={(e) => sdk.agent.setSelectedModel(e.target.value)}
                               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer font-sans text-xs text-foreground"
                               aria-label="Select Model"
                             >
@@ -692,7 +692,7 @@ export const GenieGlobalContainer = observer(function GenieGlobalContainer({
                                 <optgroup key={provider} label={provider}>
                                   {SUPPORTED_MODELS.filter((m) => m.provider === provider).map(
                                     (m) => (
-                                      <option key={m.id} value={m.name}>
+                                      <option key={m.id} value={m.id}>
                                         {m.name}
                                       </option>
                                     ),

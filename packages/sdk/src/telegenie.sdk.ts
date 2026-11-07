@@ -257,6 +257,9 @@ export class TeleGenieSDK {
       emitMessageNotification: (payload) => {
         void this.worker.call('message.emitNotification', [payload]);
       },
+      onNewMessage: (entity) => {
+        void this.agent.handleIncomingMessage(entity);
+      },
     });
     this.sw = new SwController({
       globalStore: this.globalStore,
@@ -271,9 +274,14 @@ export class TeleGenieSDK {
     });
     this.agent = new AgentController({
       getTabId: () => this.tabLeader.tabId,
+      isLeader: () => this.tabLeader.isLeader,
       telegramIsAuthorized: () => this.worker.call('auth.isAuthorized', []),
       getBackendBaseUrl: () => this.auth.getBackendBaseUrl(),
       getBackendToken: () => this.auth.getBackendToken(),
+      broadcast: this.tabLeader.broadcast,
+      globalStore: this.globalStore,
+      loadHistory: (peerId, opts) => this.messageLoad.loadHistory(peerId, opts),
+      ensureMessageStore: (peerId) => this.ensureMessageStore(peerId),
       updateUiState: (payload) => {
         if (typeof payload.isLoading === 'boolean') {
           this.globalStore.leader.setLoading(payload.isLoading);
@@ -450,6 +458,9 @@ export class TeleGenieSDK {
 
     // Per-tab agent ↔ page bridge (TabPageApi host on this tab).
     await this.agent.connectPageBridge();
+    void this.agent.ensureModelConfigured().catch((err) => {
+      console.warn('[SDK] Initial agent model configuration deferred:', err);
+    });
 
     await this.auth.configure(credentials);
 
@@ -849,7 +860,7 @@ export class TeleGenieSDK {
 }
 
 function wrapWorkerWithLogging(worker: TelegramWorkerClient): TelegramWorkerClient {
-  if (process.env.NODE_ENV === 'production') {
+  if ((globalThis as any).process?.env?.NODE_ENV === 'production') {
     return worker;
   }
   const originalCall = worker.call;

@@ -11,8 +11,8 @@ export const MEMORY_STORE = {
   entities: 'entities',
   memories: 'memories',
   memorySources: 'memory_sources',
-  commitments: 'commitments',
   embeddings: 'embeddings',
+  dialogSync: 'dialog_memory_syncs',
 } as const;
 
 export type MemoryStoreName = (typeof MEMORY_STORE)[keyof typeof MEMORY_STORE];

@@ -2,8 +2,10 @@
 
 import { getInstalledSkills } from '@/components/genie/genie-skills.storage';
 import { BUILTIN_TONES } from '@/components/genie/genie-tones.constants';
+import { MemorySyncDialog } from '@/components/genie/memory-sync.dialog';
 import { Button } from '@/lib/components/ui/button';
 import { Checkbox } from '@/lib/components/ui/checkbox';
+import { Switch } from '@/lib/components/ui/switch';
 import {
   Dialog,
   DialogBackdrop,
@@ -16,10 +18,10 @@ import {
 } from '@/lib/components/ui/dialog';
 import { Label } from '@/lib/components/ui/label';
 import { Textarea } from '@/lib/components/ui/textarea';
-import { useDialogPeer, useSDK, useStore } from '@/lib/contexts/sdk.context';
+import { useSDK, useStore } from '@/lib/contexts/sdk.context';
 import { cn } from '@/lib/utils';
-import type { GenieSkill } from '@telegenie/agent';
-import { Check, ExternalLink, Settings, Sparkles, Wand2 } from 'lucide-react';
+import type { DialogMemorySync, GenieSkill } from '@telegenie/agent';
+import { Brain, Check, ExternalLink, Loader2, RefreshCw, Settings } from 'lucide-react';
 import { observer } from 'mobx-react-lite';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -39,8 +41,6 @@ const GenieConfigDialog = observer(function GenieConfigDialog({
   const sdk = useSDK();
   const globalStore = useStore('global');
   const activePeerId = propPeerId || globalStore.nav.selectedDialogId;
-  const peer = useDialogPeer(activePeerId);
-  const peerName = peer?.display?.name;
 
   const [background, setBackground] = useState('');
   const [tone, setTone] = useState('default');
@@ -50,6 +50,13 @@ const GenieConfigDialog = observer(function GenieConfigDialog({
   const [isLoading, setIsLoading] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
 
+  // Memory sync state
+  const [dialogSync, setDialogSync] = useState<DialogMemorySync | undefined>(undefined);
+  const [incrementalExtraction, setIncrementalExtraction] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<{ processed: number } | null>(null);
+  const [syncModalOpen, setSyncModalOpen] = useState(false);
+
   useEffect(() => {
     if (!open) return;
     setInstalledSkills(getInstalledSkills());
@@ -57,9 +64,8 @@ const GenieConfigDialog = observer(function GenieConfigDialog({
 
     if (activePeerId) {
       setIsLoading(true);
-      void sdk.agent
-        .getDialogPreset(activePeerId)
-        .then((preset) => {
+      void Promise.all([
+        sdk.agent.getDialogPreset(activePeerId).then((preset) => {
           if (preset) {
             setBackground(preset.background || '');
             setTone(preset.tone || 'default');
@@ -71,15 +77,63 @@ const GenieConfigDialog = observer(function GenieConfigDialog({
             setCustomTonePrompt('');
             setSelectedSkillIds([]);
           }
-        })
+        }),
+        sdk.agent.getDialogMemorySync(activePeerId).then((sync) => {
+          setDialogSync(sync);
+          setIncrementalExtraction(sync?.incrementalSync ?? false);
+          setIsSyncing(sdk.agent.isSyncing(activePeerId));
+        }),
+      ])
         .catch((err) => {
-          console.warn('[GenieConfigDialog] Failed to load dialog preset:', err);
+          console.warn('[GenieConfigDialog] Failed to load dialog configuration:', err);
         })
         .finally(() => {
           setIsLoading(false);
         });
     }
   }, [open, activePeerId, sdk.agent]);
+
+  // Listen for background sync updates
+  useEffect(() => {
+    if (!open || !activePeerId) return;
+
+    setIsSyncing(sdk.agent.isSyncing(activePeerId));
+
+    const unsubProgress = sdk.agent.onMemorySyncProgress((payload) => {
+      if (String(payload.peerId) === String(activePeerId)) {
+        setIsSyncing(payload.status === 'syncing');
+        setSyncProgress({ processed: payload.processed });
+      }
+    });
+
+    const unsubComplete = sdk.agent.onMemorySyncComplete((payload) => {
+      if (String(payload.peerId) === String(activePeerId)) {
+        setIsSyncing(false);
+        setSyncProgress(null);
+        void sdk.agent.getDialogMemorySync(activePeerId).then((sync) => {
+          setDialogSync(sync);
+          setIsSyncing(sdk.agent.isSyncing(activePeerId));
+        });
+      }
+    });
+
+    return () => {
+      unsubProgress();
+      unsubComplete();
+    };
+  }, [open, activePeerId, sdk.agent]);
+
+  const handleToggleIncremental = async (checked: boolean) => {
+    setIncrementalExtraction(checked);
+    if (activePeerId) {
+      try {
+        const updated = await sdk.agent.setIncrementalMemorySync(activePeerId, checked);
+        setDialogSync(updated);
+      } catch (err) {
+        console.warn('[GenieConfigDialog] Failed to update incremental sync:', err);
+      }
+    }
+  };
 
   const handleToggleSkill = (skillId: string) => {
     setSelectedSkillIds((prev) =>
@@ -122,7 +176,8 @@ const GenieConfigDialog = observer(function GenieConfigDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPortal>
         <DialogBackdrop />
         <DialogPopup className="max-w-lg w-full max-h-[90vh] flex flex-col">
@@ -292,6 +347,87 @@ const GenieConfigDialog = observer(function GenieConfigDialog({
                     </div>
                   )}
                 </div>
+
+                {/* 4. Memory Section */}
+                <div className="flex flex-col gap-2.5 pt-2 border-t border-border/60">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <Brain className="size-4 text-primary" />
+                      <Label className="text-xs font-semibold">Conversation Memory</Label>
+                    </div>
+                    {isSyncing ? (
+                      <span className="flex items-center gap-1 text-[11px] font-medium text-primary">
+                        <Loader2 className="size-3 animate-spin" />
+                        <span>Syncing… {syncProgress?.processed ? `(${syncProgress.processed} msgs)` : ''}</span>
+                      </span>
+                    ) : dialogSync?.status === 'failed' ? (
+                      <span className="text-[11px] text-destructive font-medium" title={dialogSync.error}>
+                        Sync failed
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-muted-foreground font-normal">
+                        {dialogSync?.lastSyncAt
+                          ? `Last synced: ${new Date(dialogSync.lastSyncAt).toLocaleDateString()} ${new Date(dialogSync.lastSyncAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                          : 'Never synced'}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Incremental Extraction Toggle */}
+                  <div className="flex items-center justify-between p-3 rounded-lg border border-border/70 bg-card/40">
+                    <div className="flex flex-col gap-0.5 pr-2">
+                      <span className="text-xs font-medium text-foreground">Incremental Memory Extraction</span>
+                      <span className="text-[11px] text-muted-foreground">
+                        Automatically extract memories from new messages sent or received in this chat
+                      </span>
+                    </div>
+                    <Switch
+                      checked={incrementalExtraction}
+                      onCheckedChange={handleToggleIncremental}
+                    />
+                  </div>
+
+                  {/* Covered Range & Full Sync trigger */}
+                  <div className="flex items-center justify-between p-3 rounded-lg border border-border/70 bg-card/40">
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-xs font-medium text-foreground">Full History Sync</span>
+                      <span
+                        className={cn(
+                          'text-[11px]',
+                          dialogSync?.status === 'failed'
+                            ? 'text-destructive'
+                            : 'text-muted-foreground',
+                        )}
+                      >
+                        {dialogSync?.status === 'failed' && dialogSync.error
+                          ? `Failed: ${dialogSync.error}`
+                          : dialogSync?.fromDate && dialogSync?.toDate
+                            ? `Covered: ${new Date(dialogSync.fromDate).toLocaleDateString()} – ${new Date(dialogSync.toDate).toLocaleDateString()} (${dialogSync.syncedMessageCount ?? 0} msgs)`
+                            : 'Extract facts, preferences, and events from message history'}
+                      </span>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSyncModalOpen(true)}
+                      disabled={isSyncing || !activePeerId}
+                      className="text-xs h-7 gap-1.5 shrink-0"
+                    >
+                      {isSyncing ? (
+                        <>
+                          <Loader2 className="size-3 animate-spin" />
+                          <span>Syncing…</span>
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="size-3" />
+                          <span>Sync Memory</span>
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
               </>
             )}
           </div>
@@ -319,6 +455,20 @@ const GenieConfigDialog = observer(function GenieConfigDialog({
         </DialogPopup>
       </DialogPortal>
     </Dialog>
+    {activePeerId && (
+      <MemorySyncDialog
+        open={syncModalOpen}
+        onOpenChange={setSyncModalOpen}
+        peerId={activePeerId}
+        onSyncStarted={() => {
+          setIsSyncing(true);
+        }}
+        onSyncError={() => {
+          setIsSyncing(sdk.agent.isSyncing(activePeerId));
+        }}
+      />
+    )}
+  </>
   );
 });
 

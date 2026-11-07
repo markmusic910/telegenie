@@ -131,7 +131,6 @@ export async function retrieveNode(
   const intent = state.intent;
 
   let retrievedMemories = state.retrievedMemories;
-  let retrievedCommitments = state.retrievedCommitments;
   let retrievedMessages = state.retrievedMessages;
   let dialogPreset = state.dialogPreset;
 
@@ -140,8 +139,8 @@ export async function retrieveNode(
   }
 
   if (intent === 'FOLLOW_UP') {
-    retrievedCommitments = await retriever.getPendingCommitments();
-    retrievedMemories = await retriever.searchMemories(undefined, 'COMMITMENT');
+    retrievedMemories = await retriever.searchMemoriesByText(userText);
+    retrievedMessages = await retriever.searchMessages(userText, state.peerId);
   } else if (intent === 'PREFERENCE') {
     retrievedMemories = await retriever.searchMemories(undefined, 'PREFERENCE');
   } else if (intent === 'FACT') {
@@ -152,7 +151,7 @@ export async function retrieveNode(
     retrievedMessages = await retriever.searchMessages(userText, state.peerId);
   }
 
-  return { retrievedMemories, retrievedCommitments, retrievedMessages, dialogPreset };
+  return { retrievedMemories, retrievedMessages, dialogPreset };
 }
 
 // ---------------------------------------------------------------------------
@@ -182,7 +181,6 @@ export async function generateNode(
 
   const context = contextBuilder.build({
     memories: state.retrievedMemories,
-    commitments: state.retrievedCommitments,
     messages: state.retrievedMessages,
     entities: [],
     dialogPreset: state.dialogPreset,
@@ -220,16 +218,15 @@ export async function generateNode(
   const allMessages = [systemMessage, ...conversationMessages];
 
   const memCount = state.retrievedMemories?.length ?? 0;
-  const commitCount = state.retrievedCommitments?.length ?? 0;
   const msgCount = state.retrievedMessages?.length ?? 0;
 
   const traceSteps: string[] = [];
   if (state.intent) {
     traceSteps.push(`• Classified Intent: ${state.intent}`);
   }
-  if (memCount > 0 || commitCount > 0 || msgCount > 0) {
+  if (memCount > 0 || msgCount > 0) {
     traceSteps.push(
-      `• Retrieved Context: ${memCount} memories, ${commitCount} commitments, ${msgCount} chat messages`,
+      `• Retrieved Context: ${memCount} memories, ${msgCount} chat messages`,
     );
   } else {
     traceSteps.push(`• Retrieved Context: No stored memories or matching dialogue found for this query`);

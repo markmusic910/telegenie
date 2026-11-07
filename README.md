@@ -92,7 +92,7 @@ TeleGenie splits work across several browser execution contexts so Telegram sess
 |---|---|---|---|---|
 | **Main Tab** | Window | Per Tab | • `worker-rpc` to Telegram SharedWorker<br>• `worker-rpc` bidirectional with Agent DedicatedWorker<br>• `worker-rpc` client to the RLottie pool (`RLottieWorkerApi`)<br>• Hosts `LeaderTabApi` over `sw-leader` MessageChannel (if leader)<br>• `BroadcastChannel` (`telegenie`) leader election | • `localStorage` (`tabId`, auth refs, UI prefs)<br>• `telegenie-sdk-cache_${accountSlot}` (IndexedDB - cached MobX stores written by leader tab) |
 | **Telegram Worker** | `SharedWorker` | One per Origin | • `worker-rpc` host for all tabs<br>• `worker-rpc` host to Service Worker over `sw-telegram` MessageChannel<br>• Multi-port update fan-out to active tabs | • `telegenie-telegram_${accountSlot}` (IndexedDB / LocalDb - MTProto entities, peers, sessions, full message history) |
-| **Agent Worker** | `Worker` | Per Tab | • Hosts `AgentWorkerApi` over `Worker.self`<br>• Calls `TabPageApi` over `agent-page.init` MessageChannel<br>• Gated Memory Engine calls triggered by leader tab | • `telegenie-memory_${accountSlot}` (IndexedDB - shared semantic memory & commitments)<br>• `telegenie-agent_${tabId}` (IndexedDB - per-tab agent state & checkpoints)<br>• Reads `telegenie-sdk-cache_${accountSlot}` directly |
+| **Agent Worker** | `Worker` | Per Tab | • Hosts `AgentWorkerApi` over `Worker.self`<br>• Calls `TabPageApi` over `agent-page.init` MessageChannel<br>• Gated Memory Engine calls triggered by leader tab | • `telegenie-memory_${accountSlot}` (IndexedDB - shared semantic memory)<br>• `telegenie-agent_${tabId}` (IndexedDB - per-tab agent state & checkpoints)<br>• Reads `telegenie-sdk-cache_${accountSlot}` directly |
 | **RLottie Workers** | `Worker` | Per Tab (pool of at most 4) | • Hosts `RLottieWorkerApi` (`init`, `render`, `destroy`) over `Worker.self`<br>• `render` transfers an `ImageBitmap` via `rpcTransfer` | • None. Fetches `.tgs` from the page (`/media/` still uses the SW media cache). WASM glue is `apps/web/public/rlottie/rlottie-wasm.js` and `rlottie-wasm.wasm` |
 | **Service Worker** | ServiceWorker | Origin | • `worker-rpc` client to Telegram SharedWorker (`file.getPart`) over `sw-telegram`<br>• `worker-rpc` client to Leader Tab over `sw-leader`<br>• `BroadcastChannel` **observer only** | • `CacheStorage` (`v1-assets`, `v1-media`, `pwa-shell`) |
 
@@ -114,7 +114,7 @@ TeleGenie splits work across several browser execution contexts so Telegram sess
 |---|---|---|---|---|
 | `telegenie-telegram_${accountSlot}` | IndexedDB | Account Slot | Telegram SharedWorker | Complete Telegram state: entities, dialogs, full message history, MTProto auth session keys. |
 | `telegenie-sdk-cache_${accountSlot}` | IndexedDB | Account Slot | Leader Main Tab (`StoreCache`) | MobX store snapshot (`dialog`, `dialogFilter`, `message`, `customEmoji`, `global`). `global` includes per-thread `listedIds` and `msgIndexes`. `customEmoji` is the custom-emoji document cache (memory → this store → `messages.getCustomEmojiDocuments`). Read by Agent DedicatedWorker. |
-| `telegenie-memory_${accountSlot}` | IndexedDB | Account Slot | Agent DedicatedWorker (Leader Tab only) | Shared semantic memory engine store: `entities`, `memories`, `memory_sources`, `commitments`, `embeddings`. |
+| `telegenie-memory_${accountSlot}` | IndexedDB | Account Slot | Agent DedicatedWorker (Leader Tab only) | Shared semantic memory engine store: `entities`, `memories`, `memory_sources`, `embeddings`. |
 | `telegenie-agent_${tabId}` | IndexedDB | Per Tab | Agent DedicatedWorker | Tab-namespaced agent state: `agent_runs`, `agent_messages`, `tool_calls`, `agent_checkpoints`, and `dialog_presets` (permanent user-configured per-chat context & tone, preserved across cleanups). |
 | `CacheStorage` | CacheStorage | Origin | Service Worker | SW caching layers: `v1-assets` (PWA shell & static assets) and `v1-media` (progressive byte chunks). |
 | `localStorage` | LocalStorage | Per Origin / Tab | Main Tab | Lightweight UI preferences, tab session IDs (`tabId`), and auth state flags. |
@@ -174,12 +174,12 @@ Grounded Answer (Streamed to UI via TabPageApi)
 
 1. **Memory Engine (`packages/agent/src/memory/engine/`)**
    - **Candidate Detector**: Heuristic regex pre-filter to skip non-memory messages.
-   - **Memory Extractor**: Structured LLM extraction using ChatOpenAI and Zod schemas (`FACT`, `PREFERENCE`, `RELATIONSHIP`, `COMMITMENT`, `EVENT`, `PROJECT`, `TOPIC`).
+   - **Memory Extractor**: Structured LLM extraction using ChatOpenAI and Zod schemas (`FACT`, `PREFERENCE`, `RELATIONSHIP`, `EVENT`, `PROJECT`, `TOPIC`).
    - **Entity Resolver**: Dedups named entities (people, places, orgs) and links them to Telegram user IDs.
-   - **Memory Consolidator**: Ensures idempotency via `memory_sources.messageId`, updates superseded facts, and writes structured `Commitment` records.
+   - **Memory Consolidator**: Ensures idempotency via `memory_sources.messageId` and updates superseded facts.
 
 2. **Dual Storage Strategy**
-   - **Shared Memory DB (`telegenie-memory_${accountSlot}`)**: Persists `entities`, `memories`, `memory_sources`, `commitments`, and `embeddings`. Shared across all tabs of an account slot.
+   - **Shared Memory DB (`telegenie-memory_${accountSlot}`)**: Persists `entities`, `memories`, `memory_sources`, and `embeddings`. Shared across all tabs of an account slot.
    - **Per-Tab Agent State DB (`telegenie-agent_${tabId}`)**: Namespaced per-tab to avoid run history collisions. Auto-cleans `agent_runs` older than 7 days on startup.
 
 3. **LangGraph Agent Runtime (`packages/agent/src/agent/`)**

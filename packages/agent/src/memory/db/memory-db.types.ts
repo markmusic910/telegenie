@@ -30,7 +30,6 @@ export type MemoryType =
   | 'FACT'
   | 'PREFERENCE'
   | 'RELATIONSHIP'
-  | 'COMMITMENT'
   | 'EVENT'
   | 'PROJECT'
   | 'TOPIC';
@@ -88,41 +87,6 @@ export interface MemorySource {
 }
 
 // ---------------------------------------------------------------------------
-// Commitment
-// ---------------------------------------------------------------------------
-
-export type CommitmentStatus =
-  | 'PENDING'
-  | 'COMPLETED'
-  | 'OVERDUE'
-  | 'CANCELLED'
-  | 'UNKNOWN';
-
-/**
- * Explicit promise or obligation extracted from messages.
- * Commitments get their own store so they can be queried structurally
- * (e.g. "all PENDING commitments") without LLM/vector search.
- */
-export interface Commitment {
-  id: string;
-  /** Entity who made the promise (references Entity.id). */
-  promiserId: string;
-  /** Entity who receives the promise (references Entity.id). Optional. */
-  recipientId?: string;
-  /** Action verb, e.g. "send", "call", "deliver". */
-  action: string;
-  /** Object of the action, e.g. "proposal", "contract". */
-  object?: string;
-  /** Unix ms deadline. */
-  dueAt?: number;
-  status: CommitmentStatus;
-  /** 0.0–1.0 extraction confidence. */
-  confidence: number;
-  createdAt: number;
-  updatedAt: number;
-}
-
-// ---------------------------------------------------------------------------
 // Embedding
 // ---------------------------------------------------------------------------
 
@@ -143,6 +107,25 @@ export interface Embedding {
   /** Raw float32 vector stored as a regular number array (IndexedDB-serialisable). */
   vector: number[];
   createdAt: number;
+}
+
+// ---------------------------------------------------------------------------
+// DialogMemorySync
+// ---------------------------------------------------------------------------
+
+export type DialogSyncStatus = 'idle' | 'syncing' | 'completed' | 'failed';
+
+export interface DialogMemorySync {
+  peerId: string;
+  lastSyncAt: number;
+  fromDate?: number;
+  toDate?: number;
+  syncedMessageCount: number;
+  incrementalSync?: boolean;
+  status: DialogSyncStatus;
+  error?: string;
+  createdAt: number;
+  updatedAt: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -180,19 +163,17 @@ export function buildMemoryDbStores(): IdbStoreSchema[] {
       ],
     },
     {
-      name: MEMORY_STORE.commitments,
-      keyPath: 'id',
-      indexes: [
-        { name: 'byPromiserId', keyPath: 'promiserId' },
-        { name: 'byRecipientId', keyPath: 'recipientId' },
-        { name: 'byStatus', keyPath: 'status' },
-        { name: 'byDueAt', keyPath: 'dueAt' },
-      ],
-    },
-    {
       name: MEMORY_STORE.embeddings,
       keyPath: 'id',
       indexes: [{ name: 'byOwnerId', keyPath: 'ownerId' }],
+    },
+    {
+      name: MEMORY_STORE.dialogSync,
+      keyPath: 'peerId',
+      indexes: [
+        { name: 'byLastSyncAt', keyPath: 'lastSyncAt' },
+        { name: 'byStatus', keyPath: 'status' },
+      ],
     },
   ];
 }

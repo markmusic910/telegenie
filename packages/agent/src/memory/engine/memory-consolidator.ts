@@ -1,5 +1,4 @@
 import type { AgentMessageRecord } from '../../types/agent-message-record';
-import type { CommitmentRepository } from '../repository/commitment.repository';
 import type { MemorySourceRepository } from '../repository/memory-source.repository';
 import type { MemoryRepository } from '../repository/memory.repository';
 import type { EntityResolver } from './entity-resolver';
@@ -21,7 +20,6 @@ export type ConsolidateResult = {
  *    - If found and content differs → mark old as SUPERSEDED, insert new.
  *    - If found and content matches → skip (no change).
  * 4. Write MemorySource for every new memory.
- * 5. Write Commitment for COMMITMENT-type memories.
  *
  * NOTE: The LLM (MemoryExtractor) proposes candidates — this class decides
  * what gets written. The model never directly mutates IndexedDB.
@@ -30,7 +28,6 @@ export class MemoryConsolidator {
   constructor(
     private readonly memoryRepo: MemoryRepository,
     private readonly memorySourceRepo: MemorySourceRepository,
-    private readonly commitmentRepo: CommitmentRepository,
     private readonly entityResolver: EntityResolver,
   ) {}
 
@@ -100,18 +97,6 @@ export class MemoryConsolidator {
           sourceEnd: candidate.sourceEnd,
           relevance: candidate.confidence,
         });
-
-        // 7. Write Commitment for COMMITMENT-type memories
-        if (candidate.type === 'COMMITMENT') {
-          await this.commitmentRepo.create({
-            promiserId: subjectId,
-            action: candidate.action ?? candidate.predicate ?? 'unknown',
-            object: candidate.object,
-            dueAt: candidate.dueAt,
-            status: 'PENDING',
-            confidence: candidate.confidence,
-          });
-        }
       } catch {
         // Skip malformed candidates rather than aborting the whole batch
         result.skipped++;

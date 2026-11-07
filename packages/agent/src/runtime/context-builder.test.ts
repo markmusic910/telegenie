@@ -46,7 +46,6 @@ describe('ContextBuilder', () => {
   it('builds context with full tone prompt directive instead of single-word tone', () => {
     const context: RetrievalContext = {
       memories: [],
-      commitments: [],
       messages: [],
       entities: [],
       dialogPreset: {
@@ -68,7 +67,6 @@ describe('ContextBuilder', () => {
   it('includes active skills directives in context', () => {
     const context: RetrievalContext = {
       memories: [],
-      commitments: [],
       messages: [],
       entities: [],
       activeSkills: [

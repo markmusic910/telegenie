@@ -34,6 +34,7 @@ type UpdatesControllerOptions = {
   globalStore?: GlobalStore;
   markMessageListRead?: MarkMessageListRead;
   emitMessageNotification?: EmitMessageNotification;
+  onNewMessage?: (entity: MessageEntity) => void;
 };
 
 /**
@@ -48,6 +49,7 @@ export class UpdatesController {
   private readonly globalStore: GlobalStore | undefined;
   private readonly markMessageListRead: MarkMessageListRead | undefined;
   private readonly emitMessageNotification: EmitMessageNotification | undefined;
+  private readonly onNewMessage: ((entity: MessageEntity) => void) | undefined;
 
   constructor({
     sm,
@@ -57,6 +59,7 @@ export class UpdatesController {
     globalStore,
     markMessageListRead,
     emitMessageNotification,
+    onNewMessage,
   }: UpdatesControllerOptions) {
     this.sm = sm;
     this.converter = new ConversionService({ debug: debug ?? false });
@@ -65,6 +68,7 @@ export class UpdatesController {
     this.globalStore = globalStore;
     this.markMessageListRead = markMessageListRead;
     this.emitMessageNotification = emitMessageNotification;
+    this.onNewMessage = onNewMessage;
   }
 
   // @RequestLog()
@@ -156,6 +160,13 @@ export class UpdatesController {
     }
     if (!existing || Object.keys(patch).length > 0) {
       this.patchDialog(primary.peerId, patch);
+    }
+
+    if (payload.op === 'new') {
+      for (const entity of entities) {
+        if (entity.isEmpty || !entity.peerId) continue;
+        this.onNewMessage?.(entity);
+      }
     }
 
     if (this.globalStore && payload.op === 'new') {

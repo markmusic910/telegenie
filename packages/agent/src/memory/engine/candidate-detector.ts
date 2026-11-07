@@ -11,18 +11,7 @@ import type { AgentMessageRecord } from '../../types/agent-message-record';
  */
 
 const TRIGGER_PATTERNS: RegExp[] = [
-  // Commitments / promises
-  /\bi'?ll\b/i,
-  /\bi will\b/i,
-  /\bi promised?\b/i,
-  /\bi'?m going to\b/i,
-  /\bwe will\b/i,
-  /\bwe'll\b/i,
-  /\bwe need to\b/i,
-  /\bdon't forget\b/i,
-  /\bremember (to|that)\b/i,
-  /\bI'll (send|call|email|update|check|deliver|finish|complete|share)\b/i,
-  // Time references (suggests events or commitments)
+  // Time references (suggests events, meetings, or deadlines)
   /\b(next week|next month|tomorrow|this (week|weekend))\b/i,
   /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
   /\bby (end of|eod|friday|monday)\b/i,

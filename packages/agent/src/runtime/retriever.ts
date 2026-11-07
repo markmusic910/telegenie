@@ -1,5 +1,5 @@
 import { IdbManager } from '@telegenie/libs/foundation/idb';
-import type { Memory, Commitment, Entity } from '../memory/db/memory-db.types';
+import type { Memory, Entity } from '../memory/db/memory-db.types';
 import type { AgentMessageRecord } from '../types/agent-message-record';
 
 // SDK cache constants (replicated to avoid importing @telegenie/sdk)
@@ -18,7 +18,6 @@ type CachedMessageRow = {
 };
 
 import type { MemoryRepository } from '../memory/repository/memory.repository';
-import type { CommitmentRepository } from '../memory/repository/commitment.repository';
 import type { EntityRepository } from '../memory/repository/entity.repository';
 import type { DialogPresetRepository } from '../agent-db/repository/dialog-preset.repository';
 import type { DialogPreset } from '../agent-db/agent-db.types';
@@ -26,7 +25,6 @@ import type { DialogPreset } from '../agent-db/agent-db.types';
 export type RetrieverOptions = {
   accountSlot: string;
   memoryRepository: MemoryRepository;
-  commitmentRepository: CommitmentRepository;
   entityRepository: EntityRepository;
   dialogPresetRepository?: DialogPresetRepository;
   factory?: IDBFactory;
@@ -41,7 +39,6 @@ export type RetrieverOptions = {
 export class Retriever {
   private readonly sdkCacheIdb: IdbManager;
   private readonly memoryRepo: MemoryRepository;
-  private readonly commitmentRepo: CommitmentRepository;
   private readonly entityRepo: EntityRepository;
   private readonly dialogPresetRepo?: DialogPresetRepository;
 
@@ -59,7 +56,6 @@ export class Retriever {
       factory: options.factory,
     });
     this.memoryRepo = options.memoryRepository;
-    this.commitmentRepo = options.commitmentRepository;
     this.entityRepo = options.entityRepository;
     this.dialogPresetRepo = options.dialogPresetRepository;
   }
@@ -131,17 +127,6 @@ export class Retriever {
 
   async getPerson(name: string): Promise<Entity | undefined> {
     return this.entityRepo.findByName(name);
-  }
-
-  async getCommitments(status?: Commitment['status']): Promise<Commitment[]> {
-    if (status) {
-      return this.commitmentRepo.findByStatus(status);
-    }
-    return this.commitmentRepo.findAll();
-  }
-
-  async getPendingCommitments(): Promise<Commitment[]> {
-    return this.commitmentRepo.findPending();
   }
 }
 

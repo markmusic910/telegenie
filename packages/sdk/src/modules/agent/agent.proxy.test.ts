@@ -129,6 +129,25 @@ describe('Agent Controller and AI Proxy Configuration', () => {
       });
     });
 
+    it('propagates costSource to x-cost-source header in proxy mode', () => {
+      const model = createChatModel({
+        provider: 'OpenAI',
+        model: 'gpt-4o',
+        costSource: 'memory extraction',
+        proxy: {
+          baseUrl: 'https://app-stage.telegenie.link',
+          token: 'jwt-token-abc',
+        },
+      });
+
+      expect(model).toBeInstanceOf(ChatOpenAI);
+      const openAiModel = model as ChatOpenAI;
+      expect((openAiModel as any).clientConfig.defaultHeaders).toEqual({
+        Authorization: 'Bearer jwt-token-abc',
+        'x-cost-source': 'memory extraction',
+      });
+    });
+
     it('throws error when neither personal API key nor proxy is configured', () => {
       setModelConfig({ model: 'gpt-4o' });
       expect(() => {

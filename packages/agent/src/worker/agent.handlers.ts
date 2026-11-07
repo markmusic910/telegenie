@@ -177,7 +177,15 @@ export function createAgentWorkerHandlers(): RpcHandlers<AgentWorkerApi> {
      * Must only be called by the leader tab (enforced on the tab side).
      */
     processNewMessages: async (messages): Promise<void> => {
-      const { memoryEngine } = getWorkerState();
+      let { memoryEngine } = getWorkerState();
+      if (!memoryEngine) {
+        try {
+          configureAgentModel({ model: 'gpt-4o' });
+          memoryEngine = getWorkerState().memoryEngine;
+        } catch {
+          // ignore
+        }
+      }
       if (!memoryEngine) {
         throw new Error(
           'Memory Engine not initialized. Call AgentWorkerApi.configureModel first.',
@@ -255,6 +263,52 @@ export function createAgentWorkerHandlers(): RpcHandlers<AgentWorkerApi> {
     /** Save a custom preset. */
     savePreset: async (preset: AgentPreset) => {
       presetService.registerPreset(preset);
+    },
+
+    /**
+     * Process Telegram messages through Memory Engine with explicit cost source attribution.
+     */
+    processMessagesWithCost: async (messages, costSource) => {
+      let { memoryEngine } = getWorkerState();
+      if (!memoryEngine) {
+        try {
+          configureAgentModel({ model: 'gpt-4o' });
+          memoryEngine = getWorkerState().memoryEngine;
+        } catch {
+          // ignore
+        }
+      }
+      if (!memoryEngine) {
+        throw new Error(
+          'Memory Engine not initialized. Call AgentWorkerApi.configureModel first.',
+        );
+      }
+      return memoryEngine.processMessages(messages, { costSource });
+    },
+
+    getDialogMemorySync: async (peerId: string) => {
+      const { dialogMemorySyncRepo } = getWorkerState();
+      return dialogMemorySyncRepo.findByPeerId(peerId);
+    },
+
+    getAllDialogMemorySyncs: async () => {
+      const { dialogMemorySyncRepo } = getWorkerState();
+      return dialogMemorySyncRepo.findAll();
+    },
+
+    upsertDialogMemorySync: async (data) => {
+      const { dialogMemorySyncRepo } = getWorkerState();
+      return dialogMemorySyncRepo.upsert(data);
+    },
+
+    setIncrementalMemorySync: async (peerId: string, enabled: boolean) => {
+      const { dialogMemorySyncRepo } = getWorkerState();
+      return dialogMemorySyncRepo.setIncrementalSync(peerId, enabled);
+    },
+
+    deleteDialogMemorySync: async (peerId: string) => {
+      const { dialogMemorySyncRepo } = getWorkerState();
+      await dialogMemorySyncRepo.delete(peerId);
     },
   };
 }

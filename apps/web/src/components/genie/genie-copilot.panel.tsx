@@ -29,7 +29,7 @@ import {
 import { useGenieRuntime } from '@/components/genie/genie-runtime.adapter';
 import GenieConfigDialog from '@/components/genie/genie-config.dialog';
 import { Button } from '@/lib/components/ui/button';
-import { useDialogPeer } from '@/lib/contexts/sdk.context';
+import { useDialogPeer, useSDK, useStore } from '@/lib/contexts/sdk.context';
 import { fallbackPeerDisplay } from '@telegenie/sdk';
 import { BUILTIN_PRESETS } from '@telegenie/agent';
 
@@ -101,7 +101,9 @@ export const GenieCopilotPanel = observer(function GenieCopilotPanel({
   const [clearedPeerId, setClearedPeerId] = useState<string | null>(null);
   const activePeerId = clearedPeerId === peerId ? undefined : peerId;
 
-  const [selectedModel, setSelectedModel] = useState<string>(DEFAULT_MODEL_ID);
+  const sdk = useSDK();
+  const globalStore = useStore('global');
+  const selectedModel = globalStore.agent.selectedModel;
   const [selectedPreset, setSelectedPreset] = useState<string>('');
   const [isConfigDialogOpen, setIsConfigDialogOpen] = useState(false);
 
@@ -279,7 +281,7 @@ export const GenieCopilotPanel = observer(function GenieCopilotPanel({
                     </div>
                     <select
                       value={selectedModel}
-                      onChange={(e) => setSelectedModel(e.target.value)}
+                      onChange={(e) => sdk.agent.setSelectedModel(e.target.value)}
                       className="absolute inset-0 w-full h-full opacity-0 cursor-pointer font-sans text-xs text-foreground"
                       aria-label="Select Model"
                     >

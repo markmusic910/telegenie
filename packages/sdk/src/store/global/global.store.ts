@@ -5,6 +5,7 @@ import type { Dialog } from '../entity/models/dialog.model';
 import type StoreManager from '../store.manager';
 import type { MessageStore } from '../types';
 import { AuthSlice, type AuthStep } from './models/auth.slice';
+import { AgentSlice } from './models/agent.slice';
 import { DialogSlice } from './models/dialog.slice';
 import type { DialogUISnapshot } from './models/dialog.state';
 import { LeaderSlice } from './models/leader.slice';
@@ -20,6 +21,7 @@ export class GlobalStore extends BaseStore {
   leader: LeaderSlice;
   nav: NavSlice;
   stickers: StickersSlice;
+  agent: AgentSlice;
   dialogs: ObservableMap<string, DialogSlice> = observable.map();
 
   private sm?: StoreManager;
@@ -31,6 +33,7 @@ export class GlobalStore extends BaseStore {
     this.leader = new LeaderSlice();
     this.nav = new NavSlice(this);
     this.stickers = new StickersSlice();
+    this.agent = new AgentSlice();
   }
 
   getData() {
@@ -102,6 +105,7 @@ export class GlobalStore extends BaseStore {
     this.leader.hydrateFromSnapshot(snapshot);
     this.nav.hydrateFromSnapshot(snapshot);
     this.stickers.hydrateFromSnapshot(snapshot);
+    this.agent.hydrateFromSnapshot(snapshot);
     this.hydrateDialogsFromSnapshot(snapshot);
   }
 
@@ -114,6 +118,7 @@ export class GlobalStore extends BaseStore {
         ...this.nav.toJS(),
         ...this.dialogsToJS(),
         ...this.stickers.toJS(),
+        ...this.agent.toJS(),
       },
     };
   }

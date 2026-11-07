@@ -24,6 +24,7 @@ export type ModelConfig = {
   temperature?: number;
   proxy?: ProxyConfig;
   traceId?: string;
+  costSource?: string;
 };
 
 /** Module-level config set via configureModel RPC from the tab on worker startup or switch. */
@@ -146,6 +147,9 @@ export function createChatModel(override?: Partial<ModelConfig>): BaseChatModel 
   if (merged.traceId) {
     proxyHeaders['x-trace-id'] = merged.traceId;
     proxyHeaders['cf-aig-trace-id'] = merged.traceId;
+  }
+  if (merged.costSource) {
+    proxyHeaders['x-cost-source'] = merged.costSource;
   }
 
   switch (provider) {

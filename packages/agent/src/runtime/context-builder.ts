@@ -1,10 +1,9 @@
-import type { Memory, Commitment, Entity } from '../memory/db/memory-db.types';
+import type { Memory, Entity } from '../memory/db/memory-db.types';
 import type { DialogPreset, GenieSkill } from '../agent-db/agent-db.types';
 import type { AgentMessageRecord } from '../types/agent-message-record';
 
 export type RetrievalContext = {
   memories: Memory[];
-  commitments: Commitment[];
   messages: AgentMessageRecord[];
   entities: Entity[];
   dialogPreset?: DialogPreset;
@@ -93,19 +92,6 @@ export class ContextBuilder {
             ? ` [since ${new Date(memory.validFrom).toLocaleDateString()}]`
             : '';
         parts.push(`- [${memory.type}] ${memory.content}${validity}`);
-      }
-    }
-
-    if (context.commitments.length > 0) {
-      parts.push('\n## Commitments & Promises');
-      for (const commitment of context.commitments) {
-        const due = commitment.dueAt
-          ? ` — due ${new Date(commitment.dueAt).toLocaleDateString()}`
-          : '';
-        const status = `[${commitment.status}]`;
-        parts.push(
-          `- ${status} ${commitment.action}${commitment.object ? ` ${commitment.object}` : ''}${due}`,
-        );
       }
     }
 

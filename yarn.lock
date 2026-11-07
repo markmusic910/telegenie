@@ -5590,7 +5590,6 @@ __metadata:
     "@telegenie/config": "workspace:*"
     "@telegenie/libs": "workspace:*"
     await-to-js: "npm:^3.0.0"
-    langsmith: "npm:^0.9.0"
     lodash-es: "npm:^4.18.1"
     typescript: "npm:@typescript/typescript6@^6.0.2"
     uuid: "npm:^14.0.2"
@@ -5645,6 +5644,7 @@ __metadata:
   resolution: "@telegenie/sdk@workspace:packages/sdk"
   dependencies:
     "@telegenie/agent": "workspace:*"
+    "@telegenie/config": "workspace:*"
     "@telegenie/decorators": "workspace:*"
     "@telegenie/libs": "workspace:*"
     "@telegenie/teleproto": "workspace:*"
@@ -11168,7 +11168,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"langsmith@npm:>=0.5.0 <1.0.0, langsmith@npm:^0.9.0":
+"langsmith@npm:>=0.5.0 <1.0.0":
   version: 0.9.0
   resolution: "langsmith@npm:0.9.0"
   dependencies:

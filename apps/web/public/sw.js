@@ -285,7 +285,10 @@ var TAB_MSG = {
   heartbeat: "tab.heartbeat",
   leaderClaim: "tab.leaderClaim",
   leaderResign: "tab.leaderResign",
-  leaderChallenge: "tab.leaderChallenge"
+  leaderChallenge: "tab.leaderChallenge",
+  memorySyncRequest: "tab.memorySyncRequest",
+  memorySyncProgress: "tab.memorySyncProgress",
+  memorySyncComplete: "tab.memorySyncComplete"
 };
 var LEADER_HEARTBEAT_TTL_MS = 8e3;
 

@@ -2,6 +2,8 @@ import type { AgentMessageRecord } from '../types/agent-message-record';
 import type { AgentMessage, AgentRun, DialogPreset, GenieSkill } from '../agent-db/agent-db.types';
 import type { ModelConfig } from '../agent/models';
 import type { AgentPreset } from '../preset/preset.types';
+import type { DialogMemorySync } from '../memory/db/memory-db.types';
+import type { ProcessMessagesResult } from '../memory/engine/memory-engine';
 
 export interface ChatOptions {
   peerId?: string;
@@ -98,6 +100,35 @@ export type AgentWorkerApi = {
 
   /** Save a custom preset. */
   savePreset: { args: [preset: AgentPreset]; result: void };
+
+  /**
+   * Process Telegram messages through Memory Engine with cost source attribution.
+   */
+  processMessagesWithCost: {
+    args: [messages: AgentMessageRecord[], costSource?: string];
+    result: ProcessMessagesResult;
+  };
+
+  /** Get memory sync record for a specific dialog. */
+  getDialogMemorySync: { args: [peerId: string]; result: DialogMemorySync | undefined };
+
+  /** Get all dialog memory sync records across the account. */
+  getAllDialogMemorySyncs: { args: []; result: DialogMemorySync[] };
+
+  /** Upsert/update memory sync record for a specific dialog. */
+  upsertDialogMemorySync: {
+    args: [data: Partial<DialogMemorySync> & { peerId: string }];
+    result: DialogMemorySync;
+  };
+
+  /** Toggle incremental memory extraction for a specific dialog. */
+  setIncrementalMemorySync: {
+    args: [peerId: string, enabled: boolean];
+    result: DialogMemorySync;
+  };
+
+  /** Delete dialog memory sync record. */
+  deleteDialogMemorySync: { args: [peerId: string]; result: void };
 };
 
 export type AgentWorkerEvents = {

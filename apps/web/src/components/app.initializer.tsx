@@ -1,6 +1,7 @@
 'use client';
 
 import { env } from '@/env';
+import { toast } from 'sonner';
 import { useSDK, useStore } from '@/lib/contexts/sdk.context';
 import { observer } from 'mobx-react-lite';
 import { usePathname, useRouter } from 'next/navigation';
@@ -25,6 +26,20 @@ const AppInitializer = observer(({ children }: AppInitializerProps) => {
       backendBotUsername: env.telegramBotUsername,
     });
   }, [sdk]);
+
+  useEffect(() => {
+    return sdk.agent.onMemorySyncComplete((payload) => {
+      if (payload.status === 'failed') {
+        toast.error('Memory sync failed', {
+          description: payload.error || 'Failed to sync conversation memory',
+        });
+      } else if (payload.status === 'completed') {
+        toast.success('Memory sync completed', {
+          description: `Successfully synced ${payload.totalSynced} message${payload.totalSynced === 1 ? '' : 's'}.`,
+        });
+      }
+    });
+  }, [sdk.agent]);
 
   const isAuthPage = pathname === '/auth';
   const isInitializing = globalStore.auth.authStep === 'idle' || globalStore.auth.authIsLoading;
