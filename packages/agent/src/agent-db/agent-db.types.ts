@@ -127,6 +127,29 @@ export interface GenieSkill {
 }
 
 // ---------------------------------------------------------------------------
+// DialogMemorySync (Operational Sync State)
+// ---------------------------------------------------------------------------
+
+export type DialogSyncStatus = 'idle' | 'syncing' | 'completed' | 'failed';
+
+/**
+ * Operational memory extraction sync state per dialog.
+ * Persisted permanently in Agent DB — never hard-purged by TTL cleanup.
+ */
+export interface DialogMemorySync {
+  peerId: string;
+  lastSyncAt: number;
+  fromDate?: number;
+  toDate?: number;
+  syncedMessageCount: number;
+  incrementalSync?: boolean;
+  status: DialogSyncStatus;
+  error?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+// ---------------------------------------------------------------------------
 // IndexedDB store schema
 // ---------------------------------------------------------------------------
 
@@ -172,6 +195,14 @@ export function buildAgentDbStores(): IdbStoreSchema[] {
       name: AGENT_STORE.dialogPresets,
       keyPath: 'peerId',
       indexes: [{ name: 'byUpdatedAt', keyPath: 'updatedAt' }],
+    },
+    {
+      name: AGENT_STORE.dialogMemorySyncs,
+      keyPath: 'peerId',
+      indexes: [
+        { name: 'byLastSyncAt', keyPath: 'lastSyncAt' },
+        { name: 'byStatus', keyPath: 'status' },
+      ],
     },
   ];
 }

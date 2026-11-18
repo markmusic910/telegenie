@@ -1,0 +1,90 @@
+# End-to-End LangGraph Agent Evaluation Suite (Promptfoo)
+# Exercises the full TeleGenie graph pipeline: UNDERSTAND -> RETRIEVE -> GENERATE
+description: 'TeleGenie E2E LangGraph Agent Eval Suite'
+
+prompts:
+  - '{{question}}'
+
+providers:
+  - id: 'file://./providers/telegenie-graph.provider.ts'
+    label: 'telegenie-graph (gpt-4o)'
+    config:
+      model: 'gpt-4o'
+      temperature: 0.0
+
+tests:
+  # ---------------------------------------------------------------------------
+  # 1. Preference Trajectory: UNDERSTAND (PREFERENCE) -> RETRIEVE -> GENERATE
+  # ---------------------------------------------------------------------------
+  - description: 'Retrieves user preferences and answers accurately'
+    vars:
+      question: 'What are my IDE and code indentation preferences?'
+      memories:
+        - type: 'PREFERENCE'
+          content: 'User prefers dark mode across all IDEs and tools.'
+        - type: 'PREFERENCE'
+          content: 'User prefers tabs over spaces for indentation.'
+    assert:
+      # Trajectory assertion: understandNode classified intent as PREFERENCE
+      - type: javascript
+        value: 'output.intent === "PREFERENCE"'
+      # Trajectory assertion: retrieveNode pulled both preference memories
+      - type: javascript
+        value: 'output.retrievedMemoriesCount === 2'
+      # Final response assertion: deterministic + LLM-as-a-Judge
+      - type: icontains
+        transform: 'output.answer'
+        value: 'dark mode'
+      - type: llm-rubric
+        transform: 'output.answer'
+        value: 'Accurately states that the user prefers dark mode and tabs over spaces.'
+
+  # ---------------------------------------------------------------------------
+  # 2. Fact Trajectory + Anti-Hallucination
+  # ---------------------------------------------------------------------------
+  - description: 'Retrieves factual memory and refuses to hallucinate missing facts'
+    vars:
+      question: 'Where is Dave based, and what car does he drive?'
+      memories:
+        - type: 'FACT'
+          content: 'Dave is currently based in Zurich, Switzerland.'
+    assert:
+      - type: javascript
+        value: 'output.intent === "FACT"'
+      - type: javascript
+        value: 'output.retrievedMemoriesCount >= 1'
+      - type: icontains
+        transform: 'output.answer'
+        value: 'Zurich'
+      - type: llm-rubric
+        transform: 'output.answer'
+        value: |
+          Verify the response:
+          1. States that Dave is based in Zurich, Switzerland.
+          2. Explicitly notes that there is no information about what car he drives.
+
+  # ---------------------------------------------------------------------------
+  # 3. Follow-Up Trajectory (Memories + Raw Chat Messages)
+  # ---------------------------------------------------------------------------
+  - description: 'Classifies follow-up intent and retrieves recent chat messages'
+    vars:
+      peerId: 'peer-alice'
+      question: 'Did Alice reply about the contract review deadline?'
+      messages:
+        - peerId: 'peer-alice'
+          fromId: 'alice'
+          message: 'I will finish the contract review by Friday at 3 PM.'
+    assert:
+      - type: javascript
+        value: 'output.intent === "FOLLOW_UP"'
+      - type: javascript
+        value: 'output.retrievedMessagesCount >= 1'
+      - type: icontains
+        transform: 'output.answer'
+        value: 'Friday'
+
+  # ---------------------------------------------------------------------------
+  # TODO: Add more E2E scenarios below (e.g., dialogPreset tone directives,
+  # multi-turn threadId continuity, or Phase 2 tool-calling trajectories)
+  # ---------------------------------------------------------------------------
+

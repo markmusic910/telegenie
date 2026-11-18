@@ -310,5 +310,10 @@ export function createAgentWorkerHandlers(): RpcHandlers<AgentWorkerApi> {
       const { dialogMemorySyncRepo } = getWorkerState();
       await dialogMemorySyncRepo.delete(peerId);
     },
+
+    invalidateMemoryGraph: async () => {
+      const { memoryDb } = getWorkerState();
+      await memoryDb.invalidateAndReload();
+    },
   };
 }

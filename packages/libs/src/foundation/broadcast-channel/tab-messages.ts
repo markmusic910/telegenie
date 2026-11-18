@@ -7,6 +7,7 @@ export const TAB_MSG = {
   memorySyncRequest: 'tab.memorySyncRequest',
   memorySyncProgress: 'tab.memorySyncProgress',
   memorySyncComplete: 'tab.memorySyncComplete',
+  memoryGraphUpdated: 'tab.memoryGraphUpdated',
 } as const;
 
 export type TabMsgType = (typeof TAB_MSG)[keyof typeof TAB_MSG];
@@ -36,6 +37,12 @@ export type TabMemorySyncCompletePayload = {
   totalSynced: number;
   status: 'completed' | 'failed';
   error?: string;
+};
+
+export type TabMemoryGraphUpdatedPayload = {
+  accountSlot: string;
+  revision: number;
+  peerId?: string;
 };
 
 /** Same freshness window as SDK LeaderSlice — SW observes only, does not elect. */

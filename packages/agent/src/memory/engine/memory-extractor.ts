@@ -7,7 +7,16 @@ import type { AgentMessageRecord } from '../../types/agent-message-record';
 // ---------------------------------------------------------------------------
 
 export const ExtractionCandidateSchema = z.object({
-  type: z.enum(['FACT', 'PREFERENCE', 'RELATIONSHIP', 'EVENT', 'PROJECT', 'TOPIC']),
+  type: z.enum([
+    'FACT',
+    'PREFERENCE',
+    'RELATIONSHIP',
+    'EVENT',
+    'DECISION',
+    'COMMITMENT',
+    'PROJECT',
+    'TOPIC',
+  ]),
   subject: z.string().describe('Name of the primary person or entity this memory is about'),
   predicate: z
     .string()
@@ -34,10 +43,10 @@ const ExtractionResultSchema = z.object({
 // Extraction prompt
 // ---------------------------------------------------------------------------
 
-const EXTRACTION_SYSTEM = `You are a memory extraction assistant. Given a Telegram message, extract all semantically meaningful facts, preferences, relationships, events, projects, and recurring topics.
+const EXTRACTION_SYSTEM = `You are a memory extraction assistant. Given a Telegram message, extract all semantically meaningful facts, preferences, relationships, events, decisions, commitments, projects, and recurring topics.
 
 Output ONLY a JSON object with a "candidates" array. Each candidate must have:
-- type: one of FACT, PREFERENCE, RELATIONSHIP, EVENT, PROJECT, TOPIC
+- type: one of FACT, PREFERENCE, RELATIONSHIP, EVENT, DECISION, COMMITMENT, PROJECT, TOPIC
 - subject: name of the primary person or entity
 - predicate: optional semantic relationship (e.g. "works_at", "prefers")
 - object: optional secondary entity or plain value

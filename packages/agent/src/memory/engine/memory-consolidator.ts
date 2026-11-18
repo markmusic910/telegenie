@@ -1,6 +1,6 @@
 import type { AgentMessageRecord } from '../../types/agent-message-record';
-import type { MemorySourceRepository } from '../repository/memory-source.repository';
-import type { MemoryRepository } from '../repository/memory.repository';
+import type { IMemoryRepository, IMemorySourceRepository } from '../repository/repository.types';
+import type { EmbeddingProvider } from './embedding-provider';
 import type { EntityResolver } from './entity-resolver';
 import type { ExtractionCandidate } from './memory-extractor';
 
@@ -11,24 +11,23 @@ export type ConsolidateResult = {
 };
 
 /**
- * Validates, deduplicates, and persists extraction candidates.
+ * Validates, deduplicates, and persists extraction candidates into the knowledge graph.
  *
  * Responsibilities:
- * 1. Skip messages already sourced (messageId dedup key).
- * 2. Resolve subject/object names to Entity records via EntityResolver.
- * 3. Check for existing ACTIVE memory with same subjectId + predicate.
- *    - If found and content differs → mark old as SUPERSEDED, insert new.
+ * 1. Skip messages already sourced (`messageId` dedup key).
+ * 2. Resolve subject/object names to Entity records via EntityResolver & link to Dialog.
+ * 3. Check for existing ACTIVE memory with same `subjectId + predicate`.
  *    - If found and content matches → skip (no change).
- * 4. Write MemorySource for every new memory.
- *
- * NOTE: The LLM (MemoryExtractor) proposes candidates — this class decides
- * what gets written. The model never directly mutates IndexedDB.
+ *    - If found and content differs → create new, then mark old as SUPERSEDED with `SUPERSEDES` edge.
+ * 4. Optionally compute vector embedding via `EmbeddingProvider` when configured.
+ * 5. Write `DERIVED_FROM` edge + `:MessageRef` + `:Dialog` provenance.
  */
 export class MemoryConsolidator {
   constructor(
-    private readonly memoryRepo: MemoryRepository,
-    private readonly memorySourceRepo: MemorySourceRepository,
+    private readonly memoryRepo: IMemoryRepository,
+    private readonly memorySourceRepo: IMemorySourceRepository,
     private readonly entityResolver: EntityResolver,
+    private readonly embeddingProvider?: EmbeddingProvider,
   ) {}
 
   async consolidate(
@@ -47,9 +46,10 @@ export class MemoryConsolidator {
 
     for (const candidate of candidates) {
       try {
-        // 2. Resolve subject entity
+        // 2. Resolve subject entity & link to dialog
         const subjectEntity = await this.entityResolver.resolve(candidate.subject, message);
         const subjectId = subjectEntity.id;
+        await this.entityResolver.linkToDialog(subjectId, message.peerId);
 
         // 3. Resolve object entity if present
         let objectId: string | undefined;
@@ -59,6 +59,7 @@ export class MemoryConsolidator {
         }
 
         // 4. Check for existing ACTIVE memory with same subjectId + predicate
+        let supersededTargetId: string | undefined;
         if (candidate.predicate) {
           const existing = await this.memoryRepo.findActiveBySubjectAndPredicate(
             subjectId,
@@ -69,13 +70,16 @@ export class MemoryConsolidator {
               result.skipped++;
               continue;
             }
-            // Supersede old memory
-            await this.memoryRepo.markSuperseded(existing.id, message.date * 1000);
-            result.superseded++;
+            supersededTargetId = existing.id;
           }
         }
 
-        // 5. Create new memory
+        // 5. Optionally compute embedding vector
+        const embedding = this.embeddingProvider
+          ? await this.embeddingProvider.embedText(candidate.content).catch(() => undefined)
+          : undefined;
+
+        // 6. Create new memory
         const memory = await this.memoryRepo.create({
           type: candidate.type,
           subjectId,
@@ -85,18 +89,36 @@ export class MemoryConsolidator {
           confidence: candidate.confidence,
           importance: candidate.importance,
           validFrom: message.date * 1000,
+          embedding,
         });
-        const memoryId = memory.id;
         result.created++;
 
-        // 6. Write MemorySource (traceability)
-        await this.memorySourceRepo.insert({
-          memoryId,
-          messageId,
-          sourceStart: candidate.sourceStart,
-          sourceEnd: candidate.sourceEnd,
-          relevance: candidate.confidence,
-        });
+        // 7. Wire SUPERSEDES edge & mark old memory superseded
+        if (supersededTargetId) {
+          await this.memoryRepo.markSuperseded(
+            supersededTargetId,
+            message.date * 1000,
+            memory.id,
+          );
+          result.superseded++;
+        }
+
+        // 8. Write MemorySource + MessageRef + Dialog provenance
+        await this.memorySourceRepo.insert(
+          {
+            memoryId: memory.id,
+            messageId,
+            sourceStart: candidate.sourceStart,
+            sourceEnd: candidate.sourceEnd,
+            relevance: candidate.confidence,
+          },
+          {
+            peerId: message.peerId,
+            date: message.date,
+            fromId: message.fromId,
+            authorEntityId: subjectId,
+          },
+        );
       } catch {
         // Skip malformed candidates rather than aborting the whole batch
         result.skipped++;

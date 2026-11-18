@@ -29,12 +29,14 @@
     "test": "node ../../node_modules/.bin/jest",
     "test:watch": "node ../../node_modules/.bin/jest --watch",
     "eval": "promptfoo eval -c evals/intent.promptfoo.yaml && promptfoo eval -c evals/judge.promptfoo.yaml && promptfoo eval -c evals/memory.promptfoo.yaml",
+    "eval:agent": "promptfoo eval -c evals/agent.promptfoo.yaml",
     "eval:intent": "promptfoo eval -c evals/intent.promptfoo.yaml",
     "eval:memory": "promptfoo eval -c evals/memory.promptfoo.yaml",
     "eval:judge": "promptfoo eval -c evals/judge.promptfoo.yaml",
     "eval:view": "promptfoo view"
   },
   "dependencies": {
+    "@grafeo-db/web": "^0.6.3",
     "@langchain/anthropic": "^1.5.13",
     "@langchain/core": "1.2.9",
     "@langchain/google-genai": "^2.3.4",

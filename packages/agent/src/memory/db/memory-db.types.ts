@@ -1,22 +1,26 @@
-import type { IdbStoreSchema } from '@telegenie/libs/foundation/idb';
-import { MEMORY_STORE } from './memory-db.constants';
-
 // ---------------------------------------------------------------------------
 // Entity
 // ---------------------------------------------------------------------------
 
-export type EntityType = 'PERSON' | 'ORGANIZATION' | 'PLACE' | 'THING';
+export type EntityType =
+  | 'PERSON'
+  | 'ORGANIZATION'
+  | 'PLACE'
+  | 'PROJECT'
+  | 'TOPIC'
+  | 'THING';
 
 /**
- * AI-layer entity. Does NOT replace Telegram users/chats — it links to them.
- * One entity may correspond to a Telegram user, a chat, or a named thing that
- * appears in messages.
+ * AI-layer entity stored as an `:Entity` node in Grafeo.
+ * Does NOT replace Telegram users/chats — it links to them via `telegramPeerId`.
  */
 export interface Entity {
   id: string;
   type: EntityType;
   name: string;
-  /** Links to Telegram peer ID (string Bot-API style ID, e.g. "12345678", "-1001234567890"). */
+  /** Lowercased trimmed name for case-insensitive lookup. */
+  normalizedName?: string;
+  /** Links to Telegram peer ID (Bot-API style ID, e.g. "12345678", "-1001234567890"). */
   telegramPeerId?: string;
   createdAt: number;
   updatedAt: number;
@@ -31,25 +35,27 @@ export type MemoryType =
   | 'PREFERENCE'
   | 'RELATIONSHIP'
   | 'EVENT'
+  | 'DECISION'
+  | 'COMMITMENT'
   | 'PROJECT'
   | 'TOPIC';
 
 export type MemoryStatus = 'ACTIVE' | 'SUPERSEDED' | 'EXPIRED' | 'DELETED';
 
 /**
- * Core semantic memory derived from one or more Telegram messages.
- * Never use a message id as the memory id — one message can produce many memories.
+ * Core semantic memory stored as a `:Memory` node in Grafeo.
+ * Connected to `:Entity` via `ABOUT` / `MENTIONS` and to `:MessageRef` via `DERIVED_FROM`.
  */
 export interface Memory {
   id: string;
   type: MemoryType;
-  /** Entity the memory is about (references Entity.id). */
+  /** Entity the memory is about (references Entity.id; wired via ABOUT edge). */
   subjectId?: string;
   /** Semantic relationship verb, e.g. "works_at", "prefers", "plans_to_move_to". */
   predicate?: string;
-  /** Optional second entity (references Entity.id). */
+  /** Optional second entity (references Entity.id; wired via MENTIONS edge). */
   objectId?: string;
-  /** Human-readable representation passed directly to the LLM. */
+  /** Human-readable representation passed directly to the LLM (BM25 indexed). */
   content: string;
   /** Extraction confidence 0.0–1.0. */
   confidence: number;
@@ -60,16 +66,18 @@ export interface Memory {
   /** Unix ms when the fact stopped being true. */
   validUntil?: number;
   status: MemoryStatus;
+  /** Optional embedding vector stored on the node for HNSW hybrid search. */
+  embedding?: number[];
   createdAt: number;
   updatedAt: number;
 }
 
 // ---------------------------------------------------------------------------
-// MemorySource
+// MemorySource & MessageRef
 // ---------------------------------------------------------------------------
 
 /**
- * Traceability link: which Telegram message supports a memory.
+ * Traceability link (`DERIVED_FROM` edge) from `:Memory` to `:MessageRef`.
  * Invariant: every persisted Memory MUST have ≥1 MemorySource.
  */
 export interface MemorySource {
@@ -86,94 +94,24 @@ export interface MemorySource {
   createdAt: number;
 }
 
-// ---------------------------------------------------------------------------
-// Embedding
-// ---------------------------------------------------------------------------
-
-export type EmbeddingOwnerType = 'MESSAGE' | 'MEMORY';
+/**
+ * Lightweight pointer to an original Telegram message stored in SDK cache.
+ */
+export interface MessageRef {
+  id: string;
+  peerId: string;
+  date: number;
+  fromId?: string;
+}
 
 /**
- * Vector embedding for semantic search.
- * Phase 1: stored but not queried (naive text search used instead).
- * Phase 2: used by the Retriever for cosine-similarity ranking.
+ * Direct entity-to-entity semantic edge (`RELATES_TO`) derived from a memory.
  */
-export interface Embedding {
-  id: string;
-  ownerType: EmbeddingOwnerType;
-  /** Entity.id or memory's composite key. */
-  ownerId: string;
-  /** Model identifier, e.g. "text-embedding-3-small". */
-  model: string;
-  /** Raw float32 vector stored as a regular number array (IndexedDB-serialisable). */
-  vector: number[];
+export interface EntityRelationship {
+  fromEntityId: string;
+  toEntityId: string;
+  predicate: string;
+  memoryId: string;
+  status: MemoryStatus;
   createdAt: number;
-}
-
-// ---------------------------------------------------------------------------
-// DialogMemorySync
-// ---------------------------------------------------------------------------
-
-export type DialogSyncStatus = 'idle' | 'syncing' | 'completed' | 'failed';
-
-export interface DialogMemorySync {
-  peerId: string;
-  lastSyncAt: number;
-  fromDate?: number;
-  toDate?: number;
-  syncedMessageCount: number;
-  incrementalSync?: boolean;
-  status: DialogSyncStatus;
-  error?: string;
-  createdAt: number;
-  updatedAt: number;
-}
-
-// ---------------------------------------------------------------------------
-// IndexedDB store schema
-// ---------------------------------------------------------------------------
-
-/** Returns the fixed IdbStoreSchema[] for the Memory IndexedDB. */
-export function buildMemoryDbStores(): IdbStoreSchema[] {
-  return [
-    {
-      name: MEMORY_STORE.entities,
-      keyPath: 'id',
-      indexes: [
-        { name: 'byTelegramPeerId', keyPath: 'telegramPeerId' },
-        { name: 'byType', keyPath: 'type' },
-      ],
-    },
-    {
-      name: MEMORY_STORE.memories,
-      keyPath: 'id',
-      indexes: [
-        { name: 'bySubjectId', keyPath: 'subjectId' },
-        { name: 'byType', keyPath: 'type' },
-        { name: 'byStatus', keyPath: 'status' },
-        { name: 'byImportance', keyPath: 'importance' },
-        { name: 'byUpdatedAt', keyPath: 'updatedAt' },
-      ],
-    },
-    {
-      name: MEMORY_STORE.memorySources,
-      keyPath: 'id',
-      indexes: [
-        { name: 'byMemoryId', keyPath: 'memoryId' },
-        { name: 'byMessageId', keyPath: 'messageId' },
-      ],
-    },
-    {
-      name: MEMORY_STORE.embeddings,
-      keyPath: 'id',
-      indexes: [{ name: 'byOwnerId', keyPath: 'ownerId' }],
-    },
-    {
-      name: MEMORY_STORE.dialogSync,
-      keyPath: 'peerId',
-      indexes: [
-        { name: 'byLastSyncAt', keyPath: 'lastSyncAt' },
-        { name: 'byStatus', keyPath: 'status' },
-      ],
-    },
-  ];
 }

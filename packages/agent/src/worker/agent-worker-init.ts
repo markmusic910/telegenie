@@ -10,11 +10,10 @@ import { createChatModel, setModelConfig, type ModelConfig } from '../agent/mode
 import { initNodes } from '../agent/nodes';
 import { MemoryDb } from '../memory/db/memory-db';
 import { MemoryEngine } from '../memory/engine/memory-engine';
-import { EmbeddingRepository } from '../memory/repository/embedding.repository';
 import { EntityRepository } from '../memory/repository/entity.repository';
 import { MemorySourceRepository } from '../memory/repository/memory-source.repository';
 import { MemoryRepository } from '../memory/repository/memory.repository';
-import { DialogMemorySyncRepository } from '../memory/repository/dialog-memory-sync.repository';
+import { DialogMemorySyncRepository } from '../agent-db/repository/dialog-memory-sync.repository';
 import { Retriever } from '../runtime/retriever';
 
 export type AgentWorkerState = {
@@ -23,7 +22,6 @@ export type AgentWorkerState = {
   entityRepo: EntityRepository;
   memoryRepo: MemoryRepository;
   memorySourceRepo: MemorySourceRepository;
-  embeddingRepo: EmbeddingRepository;
   dialogPresetRepo: DialogPresetRepository;
   dialogMemorySyncRepo: DialogMemorySyncRepository;
   agentRunRepo: AgentRunRepository;
@@ -81,8 +79,9 @@ export async function initAgentWorker(
   const accountSlot = explicitAccountSlot || resolveWorkerAccountSlot() || 'default';
   const tabId = explicitTabId || resolveWorkerTabId() || getTabId();
 
+  // Grafeo MemoryDb is initialized lazily on first read/write to avoid WASM heap
+  // allocation in idle follower tabs.
   const memoryDb = new MemoryDb({ accountSlot });
-  await memoryDb.open();
 
   const agentDb = new AgentDb({ accountSlot });
   await agentDb.open();
@@ -93,9 +92,8 @@ export async function initAgentWorker(
   const entityRepo = new EntityRepository(memoryDb);
   const memoryRepo = new MemoryRepository(memoryDb);
   const memorySourceRepo = new MemorySourceRepository(memoryDb);
-  const embeddingRepo = new EmbeddingRepository(memoryDb);
   const dialogPresetRepo = new DialogPresetRepository(agentDb);
-  const dialogMemorySyncRepo = new DialogMemorySyncRepository(memoryDb);
+  const dialogMemorySyncRepo = new DialogMemorySyncRepository(agentDb);
   const agentRunRepo = new AgentRunRepository(agentDb);
   const agentMessageRepo = new AgentMessageRepository(agentDb);
 
@@ -118,7 +116,6 @@ export async function initAgentWorker(
     entityRepo,
     memoryRepo,
     memorySourceRepo,
-    embeddingRepo,
     dialogPresetRepo,
     dialogMemorySyncRepo,
     agentRunRepo,

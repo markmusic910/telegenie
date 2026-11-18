@@ -1,5 +1,5 @@
 import { Annotation, MessagesAnnotation } from '@langchain/langgraph';
-import type { Memory } from '../memory/db/memory-db.types';
+import type { Entity, Memory } from '../memory/db/memory-db.types';
 import type { AgentMessageRecord } from '../types/agent-message-record';
 
 /**
@@ -19,6 +19,10 @@ export const AgentStateAnnotation = Annotation.Root({
     default: () => '',
   }),
   retrievedMemories: Annotation<Memory[]>({
+    reducer: (_, next) => next,
+    default: () => [],
+  }),
+  retrievedEntities: Annotation<Entity[]>({
     reducer: (_, next) => next,
     default: () => [],
   }),

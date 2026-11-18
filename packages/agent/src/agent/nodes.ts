@@ -1,14 +1,14 @@
-import { AIMessage, HumanMessage, SystemMessage } from '@langchain/core/messages';
-import type { AgentGraphState } from './state';
+import { AIMessage, SystemMessage } from '@langchain/core/messages';
+import { ContextBuilder, DEFAULT_TONE_PROMPTS } from '../runtime/context-builder';
+import type { Retriever } from '../runtime/retriever';
+import { getTabPageClient, hasTabPageClient } from '../worker/tab-page-client';
 import { createChatModel } from './models';
 import {
-  SYSTEM_PROMPT,
   INTENT_CLASSIFICATION_PROMPT,
+  SYSTEM_PROMPT,
   buildContextPrompt,
 } from './prompts';
-import type { Retriever } from '../runtime/retriever';
-import { ContextBuilder, DEFAULT_TONE_PROMPTS } from '../runtime/context-builder';
-import { getTabPageClient, hasTabPageClient } from '../worker/tab-page-client';
+import type { AgentGraphState } from './state';
 
 import { presetService } from '../preset/preset.service';
 
@@ -131,6 +131,7 @@ export async function retrieveNode(
   const intent = state.intent;
 
   let retrievedMemories = state.retrievedMemories;
+  let retrievedEntities = state.retrievedEntities;
   let retrievedMessages = state.retrievedMessages;
   let dialogPreset = state.dialogPreset;
 
@@ -139,19 +140,26 @@ export async function retrieveNode(
   }
 
   if (intent === 'FOLLOW_UP') {
-    retrievedMemories = await retriever.searchMemoriesByText(userText);
+    const graphResult = await retriever.searchKnowledgeGraph(userText, state.peerId);
+    retrievedMemories = graphResult.memories;
+    retrievedEntities = graphResult.entities;
     retrievedMessages = await retriever.searchMessages(userText, state.peerId);
   } else if (intent === 'PREFERENCE') {
     retrievedMemories = await retriever.searchMemories(undefined, 'PREFERENCE');
+    retrievedEntities = [];
   } else if (intent === 'FACT') {
-    retrievedMemories = await retriever.searchMemoriesByText(userText);
+    const graphResult = await retriever.searchKnowledgeGraph(userText, state.peerId);
+    retrievedMemories = graphResult.memories;
+    retrievedEntities = graphResult.entities;
   } else {
-    // GENERAL / other: text search across memories + messages
-    retrievedMemories = await retriever.searchMemoriesByText(userText);
+    // GENERAL / other: hybrid knowledge graph search + messages
+    const graphResult = await retriever.searchKnowledgeGraph(userText, state.peerId);
+    retrievedMemories = graphResult.memories;
+    retrievedEntities = graphResult.entities;
     retrievedMessages = await retriever.searchMessages(userText, state.peerId);
   }
 
-  return { retrievedMemories, retrievedMessages, dialogPreset };
+  return { retrievedMemories, retrievedEntities, retrievedMessages, dialogPreset };
 }
 
 // ---------------------------------------------------------------------------
@@ -182,7 +190,7 @@ export async function generateNode(
   const context = contextBuilder.build({
     memories: state.retrievedMemories,
     messages: state.retrievedMessages,
-    entities: [],
+    entities: state.retrievedEntities ?? [],
     dialogPreset: state.dialogPreset,
     activeSkills,
     userIdentity,

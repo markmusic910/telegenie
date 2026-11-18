@@ -1,16 +1,16 @@
-import { MEMORY_STORE } from '../db/memory-db.constants';
-import type { DialogMemorySync } from '../db/memory-db.types';
-import type { MemoryDb } from '../db/memory-db';
+import { AGENT_STORE } from '../agent-db.constants';
+import type { AgentDb } from '../agent-db';
+import type { DialogMemorySync } from '../agent-db.types';
 
 export class DialogMemorySyncRepository {
-  constructor(private readonly db: MemoryDb) {}
+  constructor(private readonly db: AgentDb) {}
 
   async findByPeerId(peerId: string): Promise<DialogMemorySync | undefined> {
-    return this.db.get<DialogMemorySync>(MEMORY_STORE.dialogSync, peerId);
+    return this.db.get<DialogMemorySync>(AGENT_STORE.dialogMemorySyncs, peerId);
   }
 
   async findAll(): Promise<DialogMemorySync[]> {
-    const list = await this.db.getAll<DialogMemorySync>(MEMORY_STORE.dialogSync);
+    const list = await this.db.getAll<DialogMemorySync>(AGENT_STORE.dialogMemorySyncs);
     // Sort descending by lastSyncAt
     return list.sort((a, b) => b.lastSyncAt - a.lastSyncAt);
   }
@@ -51,7 +51,7 @@ export class DialogMemorySyncRepository {
       updatedAt: now,
     };
 
-    await this.db.put<DialogMemorySync>(MEMORY_STORE.dialogSync, merged);
+    await this.db.put<DialogMemorySync>(AGENT_STORE.dialogMemorySyncs, merged);
     return merged;
   }
 
@@ -69,12 +69,11 @@ export class DialogMemorySyncRepository {
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };
-    await this.db.put<DialogMemorySync>(MEMORY_STORE.dialogSync, updated);
+    await this.db.put<DialogMemorySync>(AGENT_STORE.dialogMemorySyncs, updated);
     return updated;
   }
 
   async delete(peerId: string): Promise<void> {
-    await this.db.delete(MEMORY_STORE.dialogSync, peerId);
+    await this.db.delete(AGENT_STORE.dialogMemorySyncs, peerId);
   }
 }
-

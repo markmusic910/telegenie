@@ -1,4 +1,4 @@
-import type { EntityRepository } from '../repository/entity.repository';
+import type { IEntityRepository } from '../repository/repository.types';
 import type { AgentMessageRecord } from '../../types/agent-message-record';
 import type { Entity } from '../db/memory-db.types';
 
@@ -13,7 +13,7 @@ import type { Entity } from '../db/memory-db.types';
  *    THING for everything else).
  */
 export class EntityResolver {
-  constructor(private readonly entityRepository: EntityRepository) {}
+  constructor(private readonly entityRepository: IEntityRepository) {}
 
   /**
    * Resolve a name string to an Entity, creating one if needed.
@@ -53,6 +53,10 @@ export class EntityResolver {
     const entity = await this.entityRepository.findById(entityId);
     if (!entity || entity.telegramPeerId === telegramPeerId) return;
     await this.entityRepository.save({ ...entity, telegramPeerId });
+  }
+
+  async linkToDialog(entityId: string, peerId: string): Promise<void> {
+    await this.entityRepository.linkParticipantToDialog(entityId, peerId);
   }
 }
 

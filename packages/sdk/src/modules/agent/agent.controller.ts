@@ -10,6 +10,7 @@ import { Controller, Method, RequestLog, getTabId } from '@telegenie/decorators'
 import {
   TAB_MSG,
   type BroadcastBus,
+  type TabMemoryGraphUpdatedPayload,
   type TabMemorySyncCompletePayload,
   type TabMemorySyncProgressPayload,
   type TabMemorySyncRequestPayload,
@@ -89,9 +90,14 @@ export class AgentController {
   private readonly incrementalQueues = new Map<string, Map<string, AgentMessageRecord>>();
   private readonly incrementalTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly isFlushingIncremental = new Set<string>();
+  private readonly getAccountSlotFn?: () => string;
+  private readonly explicitAccountSlot?: string;
+  private memoryGraphRevision = 0;
   private isModelConfigured = false;
 
   constructor(options: AgentControllerOptions = {}) {
+    this.explicitAccountSlot = options.accountSlot;
+    this.getAccountSlotFn = options.getAccountSlot;
     this.worker =
       options.createWorkerClient?.() ??
       createLazyAgentWorkerClient(() => {
@@ -132,6 +138,12 @@ export class AgentController {
           for (const listener of this.syncCompleteListeners) {
             listener(p);
           }
+        }
+      });
+
+      this.broadcast.on<TabMemoryGraphUpdatedPayload>(TAB_MSG.memoryGraphUpdated, (env) => {
+        if (!this.isLeader() && env.payload?.accountSlot === this.resolveAccountSlot()) {
+          void this.worker.call('invalidateMemoryGraph', []).catch(() => undefined);
         }
       });
     }
@@ -372,6 +384,20 @@ export class AgentController {
     if (!this.isLeader()) return;
     await this.ensureModelConfigured();
     await this.worker.call('processNewMessages', [messages]);
+    this.broadcastMemoryGraphUpdated();
+  }
+
+  private resolveAccountSlot(): string {
+    return this.explicitAccountSlot ?? this.getAccountSlotFn?.() ?? 'default';
+  }
+
+  private broadcastMemoryGraphUpdated(peerId?: string): void {
+    this.memoryGraphRevision += 1;
+    this.broadcast?.post(TAB_MSG.memoryGraphUpdated, {
+      accountSlot: this.resolveAccountSlot(),
+      revision: this.memoryGraphRevision,
+      ...(peerId ? { peerId } : {}),
+    });
   }
 
   /** Get memory sync record for a specific dialog. */
@@ -693,6 +719,7 @@ export class AgentController {
         totalSynced: totalProcessed,
         status: 'completed',
       });
+      this.broadcastMemoryGraphUpdated(peerId);
     } catch (err) {
       const errorMsg = (err as Error).message || 'Full memory extraction failed';
       try {
@@ -822,6 +849,7 @@ export class AgentController {
           syncedMessageCount: batch.length,
         },
       ]);
+      this.broadcastMemoryGraphUpdated(peerId);
     } catch (err) {
       console.warn('[AgentController] Incremental memory extraction failed:', err);
     } finally {

@@ -32,6 +32,9 @@ module.exports = {
     '^@telegenie/teleproto$': '<rootDir>/../teleproto/dist/index.js',
     '^lodash-es$': '<rootDir>/test-shims/lodash-es.cjs',
     '^lodash-es/(.*)$': '<rootDir>/test-shims/lodash-es.cjs',
+    '^@grafeo-db/web$': '<rootDir>/../../node_modules/@grafeo-db/web/dist/index.cjs',
+    '^@grafeo-db/wasm$': '<rootDir>/../agent/test-shims/grafeo-wasm.cjs',
+    '^uuid$': '<rootDir>/../agent/test-shims/uuid.cjs',
   },
   transformIgnorePatterns: ['/node_modules/(?!(@telegenie|uuid)/)'],
 };

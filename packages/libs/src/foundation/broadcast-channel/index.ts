@@ -19,5 +19,6 @@ export {
   type TabMemorySyncRequestPayload,
   type TabMemorySyncProgressPayload,
   type TabMemorySyncCompletePayload,
+  type TabMemoryGraphUpdatedPayload,
   type TabMsgType,
 } from './tab-messages';

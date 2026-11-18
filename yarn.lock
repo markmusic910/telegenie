@@ -3597,6 +3597,41 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@grafeo-db/wasm-lite@npm:0.6.3":
+  version: 0.6.3
+  resolution: "@grafeo-db/wasm-lite@npm:0.6.3"
+  checksum: 10c0/c389cdaa4ef37c3e6f3734138ec0886bcbd2b925da9c1d37e20d3d852404df6628ffd1932e8afd621457168528095343b322de707085a2beb10323fd137c6b6d
+  languageName: node
+  linkType: hard
+
+"@grafeo-db/wasm@npm:0.6.3":
+  version: 0.6.3
+  resolution: "@grafeo-db/wasm@npm:0.6.3"
+  checksum: 10c0/967fc99ce4824407c18e666ff0f91f9889fefe1dc81462b3ac2ae73958b10241091e4c9dc6a220fe72e786111a6c45b2010446e6d6e2cfe8ec21949f373191e7
+  languageName: node
+  linkType: hard
+
+"@grafeo-db/web@npm:^0.6.3":
+  version: 0.6.3
+  resolution: "@grafeo-db/web@npm:0.6.3"
+  dependencies:
+    "@grafeo-db/wasm": "npm:0.6.3"
+    "@grafeo-db/wasm-lite": "npm:0.6.3"
+  peerDependencies:
+    react: ">=19"
+    svelte: ">=5"
+    vue: ">=3"
+  peerDependenciesMeta:
+    react:
+      optional: true
+    svelte:
+      optional: true
+    vue:
+      optional: true
+  checksum: 10c0/92f1cac464d3e69334599c160f18cbe377e6189e7de49f79a03b3e8674af0a9fc0ab781e6c4f5b0fe4f652fbf31d1d9f7dd73b06568f96658f15907480ce8400
+  languageName: node
+  linkType: hard
+
 "@hono/node-server@npm:2.1.5":
   version: 2.1.5
   resolution: "@hono/node-server@npm:2.1.5"
@@ -7819,6 +7854,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@telegenie/agent@workspace:packages/agent"
   dependencies:
+    "@grafeo-db/web": "npm:^0.6.3"
     "@langchain/anthropic": "npm:^1.5.13"
     "@langchain/core": "npm:1.2.9"
     "@langchain/google-genai": "npm:^2.3.4"

@@ -21,6 +21,9 @@ module.exports = {
     '^@telegenie/decorators$': '<rootDir>/../decorators/src/index.ts',
     '^lodash-es$': '<rootDir>/../sdk/test-shims/lodash-es.cjs',
     '^lodash-es/(.*)$': '<rootDir>/../sdk/test-shims/lodash-es.cjs',
+    '^@grafeo-db/web$': '<rootDir>/../../node_modules/@grafeo-db/web/dist/index.cjs',
+    '^@grafeo-db/wasm$': '<rootDir>/test-shims/grafeo-wasm.cjs',
+    '^uuid$': '<rootDir>/test-shims/uuid.cjs',
   },
   transformIgnorePatterns: ['/node_modules/(?!(@telegenie|uuid)/)'],
 };

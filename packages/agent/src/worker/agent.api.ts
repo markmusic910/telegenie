@@ -1,8 +1,7 @@
 import type { AgentMessageRecord } from '../types/agent-message-record';
-import type { AgentMessage, AgentRun, DialogPreset, GenieSkill } from '../agent-db/agent-db.types';
+import type { AgentMessage, AgentRun, DialogMemorySync, DialogPreset, GenieSkill } from '../agent-db/agent-db.types';
 import type { ModelConfig } from '../agent/models';
 import type { AgentPreset } from '../preset/preset.types';
-import type { DialogMemorySync } from '../memory/db/memory-db.types';
 import type { ProcessMessagesResult } from '../memory/engine/memory-engine';
 
 export interface ChatOptions {
@@ -129,6 +128,12 @@ export type AgentWorkerApi = {
 
   /** Delete dialog memory sync record. */
   deleteDialogMemorySync: { args: [peerId: string]; result: void };
+
+  /**
+   * Invalidate the in-memory Grafeo WASM instance so the next query reloads
+   * the latest IndexedDB snapshot written by the Leader tab.
+   */
+  invalidateMemoryGraph: { args: []; result: void };
 };
 
 export type AgentWorkerEvents = {

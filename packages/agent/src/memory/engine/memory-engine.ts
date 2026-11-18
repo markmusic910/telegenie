@@ -3,17 +3,21 @@ import { isMemoryCandidate } from './candidate-detector';
 import { MemoryExtractor } from './memory-extractor';
 import { EntityResolver } from './entity-resolver';
 import { MemoryConsolidator } from './memory-consolidator';
-import type { EntityRepository } from '../repository/entity.repository';
-import type { MemoryRepository } from '../repository/memory.repository';
-import type { MemorySourceRepository } from '../repository/memory-source.repository';
+import type {
+  IEntityRepository,
+  IMemoryRepository,
+  IMemorySourceRepository,
+} from '../repository/repository.types';
+import type { EmbeddingProvider } from './embedding-provider';
 import type { AgentMessageRecord } from '../../types/agent-message-record';
 
 export type MemoryEngineOptions = {
   model?: BaseChatModel;
   createModel?: (costSource?: string) => BaseChatModel;
-  entityRepository: EntityRepository;
-  memoryRepository: MemoryRepository;
-  memorySourceRepository: MemorySourceRepository;
+  entityRepository: IEntityRepository;
+  memoryRepository: IMemoryRepository;
+  memorySourceRepository: IMemorySourceRepository;
+  embeddingProvider?: EmbeddingProvider;
 };
 
 export type ProcessMessagesOptions = {
@@ -58,6 +62,7 @@ export class MemoryEngine {
       options.memoryRepository,
       options.memorySourceRepository,
       this.resolver,
+      options.embeddingProvider,
     );
   }
 
