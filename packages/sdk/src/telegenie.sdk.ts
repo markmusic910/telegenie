@@ -282,6 +282,7 @@ export class TeleGenieSDK {
       getBackendToken: () => this.auth.getBackendToken(),
       broadcast: this.tabLeader.broadcast,
       globalStore: this.globalStore,
+      storeManager: this.store,
       loadHistory: (peerId, opts) => this.messageLoad.loadHistory(peerId, opts),
       ensureMessageStore: (peerId) => this.ensureMessageStore(peerId),
       updateUiState: (payload) => {

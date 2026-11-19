@@ -9,7 +9,10 @@ import type {
   IMemorySourceRepository,
 } from '../repository/repository.types';
 import type { EmbeddingProvider } from './embedding-provider';
-import type { AgentMessageRecord } from '../../types/agent-message-record';
+import type {
+  AgentMessageRecord,
+  DialogMemoryContext,
+} from '../../types/agent-message-record';
 
 export type MemoryEngineOptions = {
   model?: BaseChatModel;
@@ -22,6 +25,7 @@ export type MemoryEngineOptions = {
 
 export type ProcessMessagesOptions = {
   costSource?: string;
+  dialogContext?: DialogMemoryContext;
 };
 
 export type ProcessMessagesResult = {
@@ -36,9 +40,9 @@ export type ProcessMessagesResult = {
  *
  * Pipeline per message:
  *   AgentMessageRecord[]
- *     → CandidateDetector (keyword filter)
- *     → MemoryExtractor (LLM structured extraction)
- *     → EntityResolver (name → Entity)
+ *     → CandidateDetector (keyword filter across message + reply + media context)
+ *     → MemoryExtractor (LLM structured extraction with DialogMemoryContext)
+ *     → EntityResolver (name / handle / peerId → Entity)
  *     → MemoryConsolidator (dedup + persist)
  *
  * Called only from the leader tab's agent worker via AgentWorkerApi.processNewMessages().
@@ -74,6 +78,7 @@ export class MemoryEngine {
       options?.costSource && this.createModel
         ? new MemoryExtractor(this.createModel(options.costSource))
         : this.defaultExtractor;
+    const dialogContext = options?.dialogContext;
 
     const result: ProcessMessagesResult = {
       processed: 0,
@@ -83,13 +88,13 @@ export class MemoryEngine {
     };
 
     for (const message of messages) {
-      // Skip non-text / empty messages
-      if (!message.message?.trim()) {
+      // Skip non-text / empty messages unless media carries a text summary
+      if (!message.message?.trim() && !message.media?.summary?.trim()) {
         result.skipped++;
         continue;
       }
 
-      // Candidate detector pre-filter
+      // Candidate detector pre-filter (evaluates message + reply quote + media summary)
       if (!isMemoryCandidate(message)) {
         result.skipped++;
         continue;
@@ -98,11 +103,15 @@ export class MemoryEngine {
       result.processed++;
 
       // LLM extraction
-      const candidates = await extractor.extract(message);
+      const candidates = await extractor.extract(message, dialogContext);
       if (candidates.length === 0) continue;
 
       // Consolidate (dedup + persist)
-      const consolidateResult = await this.consolidator.consolidate(candidates, message);
+      const consolidateResult = await this.consolidator.consolidate(
+        candidates,
+        message,
+        dialogContext,
+      );
       result.memoriesCreated += consolidateResult.created;
       result.memoriesSuperseded += consolidateResult.superseded;
       result.skipped += consolidateResult.skipped;

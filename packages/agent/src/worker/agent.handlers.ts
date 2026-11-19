@@ -176,7 +176,7 @@ export function createAgentWorkerHandlers(): RpcHandlers<AgentWorkerApi> {
      * Process new Telegram messages through the Memory Engine.
      * Must only be called by the leader tab (enforced on the tab side).
      */
-    processNewMessages: async (messages): Promise<void> => {
+    processNewMessages: async (messages, dialogContext): Promise<void> => {
       let { memoryEngine } = getWorkerState();
       if (!memoryEngine) {
         try {
@@ -191,7 +191,7 @@ export function createAgentWorkerHandlers(): RpcHandlers<AgentWorkerApi> {
           'Memory Engine not initialized. Call AgentWorkerApi.configureModel first.',
         );
       }
-      await memoryEngine.processMessages(messages);
+      await memoryEngine.processMessages(messages, { dialogContext });
     },
 
     /**
@@ -268,7 +268,7 @@ export function createAgentWorkerHandlers(): RpcHandlers<AgentWorkerApi> {
     /**
      * Process Telegram messages through Memory Engine with explicit cost source attribution.
      */
-    processMessagesWithCost: async (messages, costSource) => {
+    processMessagesWithCost: async (messages, costSource, dialogContext) => {
       let { memoryEngine } = getWorkerState();
       if (!memoryEngine) {
         try {
@@ -283,7 +283,7 @@ export function createAgentWorkerHandlers(): RpcHandlers<AgentWorkerApi> {
           'Memory Engine not initialized. Call AgentWorkerApi.configureModel first.',
         );
       }
-      return memoryEngine.processMessages(messages, { costSource });
+      return memoryEngine.processMessages(messages, { costSource, dialogContext });
     },
 
     getDialogMemorySync: async (peerId: string) => {

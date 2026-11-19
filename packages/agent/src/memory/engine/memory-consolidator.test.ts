@@ -128,4 +128,61 @@ describe('MemoryConsolidator & Graph Retriever (Grafeo)', () => {
     expect(retrieved.memories.some((m) => m.content.includes('MySQL'))).toBe(false);
     expect(retrieved.entities.some((e) => e.name === 'Project Alpha')).toBe(true);
   });
+
+  it('resolves first-person and @username candidates against dialogContext.peers', async () => {
+    const dialogContext = {
+      peerId: 'group_beta',
+      peerName: 'Beta Squad',
+      peerType: 'chat' as const,
+      peers: {
+        'tg_101': {
+          id: 'tg_101',
+          name: 'Alice Chen',
+          username: 'alice_c',
+          type: 'user' as const,
+        },
+        'tg_202': {
+          id: 'tg_202',
+          name: 'Bob Vance',
+          username: 'bob_dev',
+          type: 'user' as const,
+        },
+      },
+    };
+
+    const msg: AgentMessageRecord = {
+      id: 'group_beta:201',
+      peerId: 'group_beta',
+      fromId: 'tg_101',
+      date: 1700000300,
+      mentions: [{ peerId: 'tg_202', username: 'bob_dev', text: '@bob_dev' }],
+      message: 'I mentor @bob_dev every Tuesday on backend architecture.',
+    };
+
+    const res = await consolidator.consolidate(
+      [
+        {
+          type: 'RELATIONSHIP',
+          subject: 'me',
+          predicate: 'mentors',
+          object: '@bob_dev',
+          confidence: 0.95,
+          importance: 0.9,
+          content: 'Alice Chen mentors Bob Vance on backend architecture.',
+        },
+      ],
+      msg,
+      dialogContext,
+    );
+
+    expect(res).toEqual({ created: 1, superseded: 0, skipped: 0 });
+
+    const alice = await entityRepo.findByTelegramPeerId('tg_101');
+    const bob = await entityRepo.findByTelegramPeerId('tg_202');
+
+    expect(alice).toBeDefined();
+    expect(alice?.name).toBe('Alice Chen');
+    expect(bob).toBeDefined();
+    expect(bob?.name).toBe('Bob Vance');
+  });
 });

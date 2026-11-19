@@ -1,4 +1,13 @@
-import type { AgentMessageRecord } from '../types/agent-message-record';
+import type {
+  AgentMessageForwardContext,
+  AgentMessageMediaContext,
+  AgentMessageMention,
+  AgentMessageRecord,
+  AgentMessageReplyContext,
+  DialogMemoryContext,
+  DialogParticipantInfo,
+  DialogPeerKind,
+} from '../types/agent-message-record';
 import type { AgentMessage, AgentRun, DialogMemorySync, DialogPreset, GenieSkill } from '../agent-db/agent-db.types';
 import type { ModelConfig } from '../agent/models';
 import type { AgentPreset } from '../preset/preset.types';
@@ -41,7 +50,10 @@ export type AgentWorkerApi = {
    * Process new Telegram messages through the Memory Engine.
    * MUST only be called by the leader tab — follower tabs must skip.
    */
-  processNewMessages: { args: [messages: AgentMessageRecord[]]; result: void };
+  processNewMessages: {
+    args: [messages: AgentMessageRecord[], dialogContext?: DialogMemoryContext];
+    result: void;
+  };
 
   /**
    * Configure the LLM used by the agent.
@@ -104,7 +116,11 @@ export type AgentWorkerApi = {
    * Process Telegram messages through Memory Engine with cost source attribution.
    */
   processMessagesWithCost: {
-    args: [messages: AgentMessageRecord[], costSource?: string];
+    args: [
+      messages: AgentMessageRecord[],
+      costSource?: string,
+      dialogContext?: DialogMemoryContext,
+    ];
     result: ProcessMessagesResult;
   };
 
@@ -143,4 +159,13 @@ export type AgentWorkerEvents = {
   runStatus: { runId: string; status: 'RUNNING' | 'COMPLETED' | 'FAILED' };
 };
 
-export type { AgentMessageRecord };
+export type {
+  AgentMessageForwardContext,
+  AgentMessageMediaContext,
+  AgentMessageMention,
+  AgentMessageRecord,
+  AgentMessageReplyContext,
+  DialogMemoryContext,
+  DialogParticipantInfo,
+  DialogPeerKind,
+};

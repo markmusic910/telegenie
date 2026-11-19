@@ -1,4 +1,7 @@
-import type { AgentMessageRecord } from '../../types/agent-message-record';
+import type {
+  AgentMessageRecord,
+  DialogMemoryContext,
+} from '../../types/agent-message-record';
 import type { IMemoryRepository, IMemorySourceRepository } from '../repository/repository.types';
 import type { EmbeddingProvider } from './embedding-provider';
 import type { EntityResolver } from './entity-resolver';
@@ -33,6 +36,7 @@ export class MemoryConsolidator {
   async consolidate(
     candidates: ExtractionCandidate[],
     message: AgentMessageRecord,
+    dialogContext?: DialogMemoryContext,
   ): Promise<ConsolidateResult> {
     const messageId = message.id;
     const result: ConsolidateResult = { created: 0, superseded: 0, skipped: 0 };
@@ -47,14 +51,22 @@ export class MemoryConsolidator {
     for (const candidate of candidates) {
       try {
         // 2. Resolve subject entity & link to dialog
-        const subjectEntity = await this.entityResolver.resolve(candidate.subject, message);
+        const subjectEntity = await this.entityResolver.resolve(
+          candidate.subject,
+          message,
+          dialogContext,
+        );
         const subjectId = subjectEntity.id;
         await this.entityResolver.linkToDialog(subjectId, message.peerId);
 
         // 3. Resolve object entity if present
         let objectId: string | undefined;
         if (candidate.object) {
-          const objectEntity = await this.entityResolver.resolve(candidate.object);
+          const objectEntity = await this.entityResolver.resolve(
+            candidate.object,
+            message,
+            dialogContext,
+          );
           objectId = objectEntity.id;
         }
 

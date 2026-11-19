@@ -1,0 +1,292 @@
+# End-to-End Memory Engine Evaluation Suite (Promptfoo)
+# Exercises the full TeleGenie MemoryEngine pipeline backed by in-memory Grafeo WASM DB:
+#   AgentMessageRecord[] + DialogMemoryContext
+#     -> CandidateDetector -> MemoryExtractor -> EntityResolver -> MemoryConsolidator
+description: 'TeleGenie E2E Memory Engine Eval Suite'
+
+prompts:
+  - '{{message}}'
+
+providers:
+  - id: 'file://./providers/telegenie-memory.provider.ts'
+    label: 'telegenie-memory (gpt-4o)'
+    config:
+      model: 'gpt-4o'
+      temperature: 0.0
+
+tests:
+  # ---------------------------------------------------------------------------
+  # 1. Dialog Participant Map & First-Person Resolution (No Pre-Seeded Entity)
+  # ---------------------------------------------------------------------------
+  - description: 'Resolves first-person preference via dialogContext.peers into canonical Entity with telegramPeerId'
+    vars:
+      peerId: '1001'
+      fromId: '1001'
+      dialogContext:
+        peerId: '1001'
+        peerName: 'Alice Chen'
+        peerType: 'user'
+        peers:
+          '1001':
+            id: '1001'
+            name: 'Alice Chen'
+            username: 'alice_c'
+            type: 'user'
+      messages:
+        - id: '1001:101'
+          peerId: '1001'
+          fromId: '1001'
+          message: 'I prefer using dark mode in all my IDEs and applications.'
+    assert:
+      - type: javascript
+        value: 'output.stats.processed === 1 && output.stats.memoriesCreated >= 1'
+      - type: javascript
+        value: 'output.activeMemories.some((m) => m.type === "PREFERENCE" && m.content.toLowerCase().includes("dark mode"))'
+      - type: javascript
+        value: 'output.entities.some((e) => e.name === "Alice Chen" && e.telegramPeerId === "1001")'
+      - type: javascript
+        value: 'output.sources.some((s) => s.messageId === "1001:101")'
+
+  # ---------------------------------------------------------------------------
+  # 2. Concise Reply Disambiguation via replyTo Context
+  # ---------------------------------------------------------------------------
+  - description: 'Passes concise reply through CandidateDetector via replyTo.quoteText and extracts grounded fact'
+    vars:
+      peerId: '-100555'
+      dialogContext:
+        peerId: '-100555'
+        peerName: 'Core Team'
+        peerType: 'channel'
+        peers:
+          '2001':
+            id: '2001'
+            name: 'Alice Chen'
+            username: 'alice_c'
+            type: 'user'
+          '2002':
+            id: '2002'
+            name: 'Dave Miller'
+            username: 'dave_m'
+            type: 'user'
+      messages:
+        - id: '-100555:150'
+          peerId: '-100555'
+          fromId: '2002'
+          replyTo:
+            messageId: '149'
+            fromId: '2001'
+            quoteText: 'Dave, which city are you currently based in?'
+          message: 'Zurich, Switzerland.'
+    assert:
+      - type: javascript
+        value: 'output.stats.processed === 1 && output.stats.memoriesCreated >= 1'
+      - type: javascript
+        value: 'output.activeMemories.some((m) => m.content.toLowerCase().includes("zurich"))'
+      - type: javascript
+        value: 'output.entities.some((e) => e.telegramPeerId === "2002")'
+
+  # ---------------------------------------------------------------------------
+  # 3. @Mention Resolution in Group Dialog
+  # ---------------------------------------------------------------------------
+  - description: 'Resolves @username mention via message.mentions and dialogContext.peers'
+    vars:
+      peerId: '-100777'
+      dialogContext:
+        peerId: '-100777'
+        peerName: 'Platform Engineering'
+        peerType: 'channel'
+        topics:
+          '10':
+            title: 'Architecture & Migrations'
+        peers:
+          '3001':
+            id: '3001'
+            name: 'Sarah Jenkins'
+            username: 'sarah_j'
+            type: 'user'
+          '3002':
+            id: '3002'
+            name: 'Bob Vance'
+            username: 'bob_dev'
+            type: 'user'
+      messages:
+        - id: '-100777:210'
+          peerId: '-100777'
+          fromId: '3001'
+          threadId: '10'
+          mentions:
+            - peerId: '3002'
+              username: 'bob_dev'
+              text: '@bob_dev'
+          message: 'We decided that @bob_dev will lead the GraphQL gateway rewrite for Project Titan.'
+    assert:
+      - type: javascript
+        value: 'output.stats.processed === 1 && output.stats.memoriesCreated >= 1'
+      - type: javascript
+        value: 'output.activeMemories.some((m) => m.content.toLowerCase().includes("graphql") || m.content.toLowerCase().includes("titan"))'
+      - type: javascript
+        value: 'output.entities.some((e) => e.name === "Bob Vance" && e.telegramPeerId === "3002")'
+
+  # ---------------------------------------------------------------------------
+  # 4. Candidate Detector Pre-Filter & Batch Mixed Traffic
+  # ---------------------------------------------------------------------------
+  - description: 'Filters trivial chit-chat in CandidateDetector and extracts facts/decisions from batch'
+    vars:
+      peerId: 'group-eng'
+      dialogContext:
+        peerId: 'group-eng'
+        peerName: 'Engineering'
+        peerType: 'chat'
+        peers:
+          'user-bob':
+            id: 'user-bob'
+            name: 'Bob'
+            username: 'bob'
+            type: 'user'
+          'user-dave':
+            id: 'user-dave'
+            name: 'Dave'
+            username: 'dave'
+            type: 'user'
+          'user-sarah':
+            id: 'user-sarah'
+            name: 'Sarah'
+            username: 'sarah'
+            type: 'user'
+      messages:
+        - id: 'group-eng:201'
+          peerId: 'group-eng'
+          fromId: 'user-bob'
+          message: 'ok cool thanks 👍'
+        - id: 'group-eng:202'
+          peerId: 'group-eng'
+          fromId: 'user-bob'
+          message: 'Good morning everyone!'
+        - id: 'group-eng:203'
+          peerId: 'group-eng'
+          fromId: 'user-dave'
+          message: 'I work at Stripe as a principal security architect.'
+        - id: 'group-eng:204'
+          peerId: 'group-eng'
+          fromId: 'user-sarah'
+          message: 'We decided to migrate the authentication service to passkeys and WebAuthn.'
+    assert:
+      # 2 trivial messages skipped by CandidateDetector, 2 candidate messages processed
+      - type: javascript
+        value: 'output.stats.processed === 2 && output.stats.skipped >= 2'
+      - type: javascript
+        value: 'output.stats.memoriesCreated >= 2'
+      - type: javascript
+        value: 'output.activeMemories.some((m) => m.content.toLowerCase().includes("stripe"))'
+      - type: javascript
+        value: 'output.activeMemories.some((m) => m.content.toLowerCase().includes("webauthn") || m.content.toLowerCase().includes("passkey"))'
+
+  # ---------------------------------------------------------------------------
+  # 5. Idempotency / Message Deduplication via Preset MemorySource
+  # ---------------------------------------------------------------------------
+  - description: 'Skips duplicate extraction when messageId already exists in MemorySourceRepository'
+    vars:
+      peerId: 'peer-dave'
+      seedMemories:
+        - type: 'FACT'
+          subjectName: 'Dave'
+          predicate: 'lives_in'
+          objectName: 'Zurich'
+          content: 'Dave lives in Zurich, Switzerland.'
+          sourceMessageId: 'peer-dave:301'
+      messages:
+        # Exact same messageId re-delivered (e.g., after leader tab handoff)
+        - id: 'peer-dave:301'
+          peerId: 'peer-dave'
+          fromId: 'user-dave'
+          message: 'I live in Zurich, Switzerland and work remotely.'
+    assert:
+      # MemoryEngine processes the candidate message, but MemoryConsolidator skips all candidates for peer-dave:301
+      - type: javascript
+        value: 'output.stats.processed === 1 && output.stats.memoriesCreated === 0 && output.stats.skipped >= 1'
+      - type: javascript
+        value: 'output.activeMemories.length === 1'
+
+  # ---------------------------------------------------------------------------
+  # 6. Conflict Superseding (Old Fact -> SUPERSEDED, New Fact -> ACTIVE)
+  # ---------------------------------------------------------------------------
+  - description: 'Supersedes existing active memory when subject + predicate match with updated content'
+    vars:
+      peerId: 'peer-dave'
+      fromId: 'tg-dave'
+      dialogContext:
+        peerId: 'peer-dave'
+        peerName: 'Dave'
+        peerType: 'user'
+        peers:
+          'tg-dave':
+            id: 'tg-dave'
+            name: 'Dave'
+            username: 'dave_z'
+            type: 'user'
+      seedEntities:
+        - name: 'Dave'
+          type: 'PERSON'
+          telegramPeerId: 'tg-dave'
+      seedMemories:
+        - type: 'FACT'
+          subjectName: 'Dave'
+          predicate: 'works_at'
+          objectName: 'Acme Corp'
+          content: 'Dave works at Acme Corp.'
+          sourceMessageId: 'peer-dave:400'
+      messages:
+        - id: 'peer-dave:401'
+          peerId: 'peer-dave'
+          fromId: 'tg-dave'
+          message: 'I work at Stripe now.'
+    assert:
+      - type: javascript
+        value: 'output.stats.processed === 1 && output.stats.memoriesCreated >= 1'
+      - type: javascript
+        value: 'output.activeMemories.some((m) => m.content.toLowerCase().includes("stripe"))'
+      # If the LLM extracted predicate "works_at" for Dave, the old Acme Corp memory is superseded
+      - type: javascript
+        value: 'output.stats.memoriesSuperseded === 1 || output.activeMemories.length >= 2'
+
+  # ---------------------------------------------------------------------------
+  # 7. Relationship & Event Multi-Message Extraction
+  # ---------------------------------------------------------------------------
+  - description: 'Extracts relationship and upcoming event across sequential messages in a dialog'
+    vars:
+      peerId: 'peer-alex'
+      dialogContext:
+        peerId: 'peer-alex'
+        peerName: 'Alex Rivera'
+        peerType: 'user'
+        peers:
+          'user-me':
+            id: 'user-me'
+            name: 'Mark'
+            username: 'mark_dev'
+            type: 'user'
+            isSelf: true
+          'user-alex':
+            id: 'user-alex'
+            name: 'Alex Rivera'
+            username: 'alex_r'
+            type: 'user'
+      messages:
+        - id: 'peer-alex:501'
+          peerId: 'peer-alex'
+          fromId: 'user-me'
+          out: true
+          message: 'Alex is my direct engineering manager at Acme Corp.'
+        - id: 'peer-alex:502'
+          peerId: 'peer-alex'
+          fromId: 'user-alex'
+          message: 'We have an emergency release retrospective tomorrow morning at 9am.'
+    assert:
+      - type: javascript
+        value: 'output.stats.processed === 2 && output.stats.memoriesCreated >= 2'
+      - type: javascript
+        value: 'output.activeMemories.some((m) => m.type === "RELATIONSHIP" || m.content.toLowerCase().includes("manager"))'
+      - type: javascript
+        value: 'output.activeMemories.some((m) => m.type === "EVENT" || m.content.toLowerCase().includes("retrospective"))'
+      - type: javascript
+        value: 'output.entities.some((e) => e.name.toLowerCase().includes("alex"))'

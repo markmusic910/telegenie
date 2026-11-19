@@ -1,4 +1,17 @@
-export type { AgentWorkerApi, AgentWorkerEvents, AgentMessageRecord, ChatOptions, ChatResult } from './agent.api';
+export type {
+  AgentWorkerApi,
+  AgentWorkerEvents,
+  AgentMessageForwardContext,
+  AgentMessageMediaContext,
+  AgentMessageMention,
+  AgentMessageRecord,
+  AgentMessageReplyContext,
+  DialogMemoryContext,
+  DialogParticipantInfo,
+  DialogPeerKind,
+  ChatOptions,
+  ChatResult,
+} from './agent.api';
 export type {
   DialogPreset,
   GenieSkill,

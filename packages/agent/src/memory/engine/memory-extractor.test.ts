@@ -1,6 +1,13 @@
-import { MemoryExtractor, ExtractionCandidateSchema } from './memory-extractor';
+import {
+  MemoryExtractor,
+  ExtractionCandidateSchema,
+  buildExtractionUserPrompt,
+} from './memory-extractor';
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
-import type { AgentMessageRecord } from '../../types/agent-message-record';
+import type {
+  AgentMessageRecord,
+  DialogMemoryContext,
+} from '../../types/agent-message-record';
 
 function createMockModel(output: string): BaseChatModel {
   return {
@@ -125,5 +132,67 @@ describe('MemoryExtractor (Layer 1 Schema & Robustness)', () => {
     const extractor = new MemoryExtractor(createMockModel(invalidTypePayload));
     const candidates = await extractor.extract(dummyMessage);
     expect(candidates).toEqual([]);
+  });
+
+  it('includes dialogContext, sender username, replyTo, mentions, fwdFrom, and media in user prompt', () => {
+    const dialogContext: DialogMemoryContext = {
+      peerId: '-100777',
+      peerName: 'Platform Engineering',
+      peerType: 'channel',
+      topics: {
+        '42': { title: 'Database Migration' },
+      },
+      peers: {
+        '1001': {
+          id: '1001',
+          name: 'Alice Chen',
+          username: 'alice_c',
+          type: 'user',
+        },
+        '1002': {
+          id: '1002',
+          name: 'Bob Vance',
+          username: 'bob_dev',
+          type: 'user',
+        },
+      },
+    };
+
+    const enrichedMessage: AgentMessageRecord = {
+      id: '-100777:555',
+      peerId: '-100777',
+      fromId: '1001',
+      date: 1700000000,
+      threadId: '42',
+      replyTo: {
+        messageId: '550',
+        fromId: '1002',
+        quoteText: 'Who is owning the Postgres 16 cutover?',
+      },
+      mentions: [
+        {
+          peerId: '1002',
+          username: 'bob_dev',
+          text: '@bob_dev',
+        },
+      ],
+      media: {
+        type: 'document',
+        fileName: 'postgres-cutover-plan.pdf',
+      },
+      message: '@bob_dev and I will run the cutover on Friday.',
+    };
+
+    const prompt = buildExtractionUserPrompt(enrichedMessage, dialogContext);
+
+    expect(prompt).toContain('Dialog: "Platform Engineering" (type: channel, id: -100777)');
+    expect(prompt).toContain('Topic / Thread: "Database Migration" (id: 42)');
+    expect(prompt).toContain('Message ID: -100777:555');
+    expect(prompt).toContain('Sender: Alice Chen (@alice_c) [id: 1001]');
+    expect(prompt).toContain(
+      'Replying to message 550 from Bob Vance (@bob_dev) [id: 1002]: "Who is owning the Postgres 16 cutover?"',
+    );
+    expect(prompt).toContain('Mentions: @bob_dev -> Bob Vance [id: 1002]');
+    expect(prompt).toContain('Attachment: [document, file: "postgres-cutover-plan.pdf"]');
   });
 });

@@ -1,4 +1,13 @@
-import type { AgentMessageRecord, DialogMemorySync } from '@telegenie/agent/worker';
+import type {
+  AgentMessageForwardContext,
+  AgentMessageMediaContext,
+  AgentMessageMention,
+  AgentMessageRecord,
+  AgentMessageReplyContext,
+  DialogMemoryContext,
+  DialogMemorySync,
+  DialogParticipantInfo,
+} from '@telegenie/agent/worker';
 import { createLazyAgentWorkerClient, type AgentWorkerClient } from '@telegenie/agent/worker';
 import { createDefaultAgentWorker } from '@telegenie/agent/worker/create-default-agent-worker';
 import {
@@ -15,10 +24,24 @@ import {
   type TabMemorySyncProgressPayload,
   type TabMemorySyncRequestPayload,
 } from '@telegenie/libs/foundation/broadcast-channel';
+import type {
+  TypeMessageEntity,
+  TypeMessageFwdHeader,
+  TypeMessageMedia,
+  TypeMessageReplyHeader,
+} from '@telegenie/libs/foundation/telegram/types/api-types';
 import type { LoadHistoryOptions } from '@telegenie/libs/foundation/telegram/worker';
 import type { UpdateUiStatePayload } from '@telegenie/libs/types/tab-page.api';
 import type GlobalStore from '../../store/global/global.store';
+import type StoreManager from '../../store/store.manager';
 import type { MessageEntity, MessageStore } from '../../store/types';
+import {
+  buildReplyPreviewText,
+  peerIdFromTypePeer,
+  replySenderPeerId,
+  resolveMessageReplyHeader,
+} from '../../store/utils/message-reply';
+import { dialogPeerKindFromId } from '../../store/utils/peer-display';
 import { TabPage } from './tab-page';
 
 export type AgentControllerLoadHistoryResult = {
@@ -30,6 +53,10 @@ export type AgentControllerLoadHistoryResult = {
     fromId?: string;
     from_id?: unknown;
     isEmpty?: boolean;
+    replyTo?: TypeMessageReplyHeader;
+    entities?: TypeMessageEntity[];
+    fwdFrom?: TypeMessageFwdHeader;
+    media?: TypeMessageMedia;
   }>;
   count?: number;
 };
@@ -58,6 +85,8 @@ export type AgentControllerOptions = {
   broadcast?: BroadcastBus;
   /** Global store for dialog metadata. */
   globalStore?: GlobalStore;
+  /** Store manager for looking up user/chat/channel display metadata. */
+  storeManager?: StoreManager;
   /** Load history function to fetch older/newer messages for memory extraction. */
   loadHistory?: (peerId: string, opts: LoadHistoryOptions) => Promise<AgentControllerLoadHistoryResult>;
   /** Message store getter to retrieve locally cached messages. */
@@ -79,6 +108,7 @@ export class AgentController {
   private readonly getBackendToken?: () => string | null;
   private readonly broadcast?: BroadcastBus;
   private readonly globalStore?: GlobalStore;
+  private readonly storeManager?: StoreManager;
   private readonly loadHistory?: (peerId: string, opts: LoadHistoryOptions) => Promise<AgentControllerLoadHistoryResult>;
   private readonly ensureMessageStore?: (peerId: string) => MessageStore;
 
@@ -111,6 +141,7 @@ export class AgentController {
     this.getBackendToken = options.getBackendToken;
     this.broadcast = options.broadcast;
     this.globalStore = options.globalStore;
+    this.storeManager = options.storeManager;
     this.loadHistory = options.loadHistory;
     this.ensureMessageStore = options.ensureMessageStore;
 
@@ -380,11 +411,17 @@ export class AgentController {
    */
   @RequestLog()
   @Method()
-  async processNewMessages(messages: AgentMessageRecord[]): Promise<void> {
+  async processNewMessages(
+    messages: AgentMessageRecord[],
+    dialogContext?: DialogMemoryContext,
+  ): Promise<void> {
     if (!this.isLeader()) return;
     await this.ensureModelConfigured();
-    await this.worker.call('processNewMessages', [messages]);
-    this.broadcastMemoryGraphUpdated();
+    const peerId = dialogContext?.peerId ?? messages[0]?.peerId;
+    const resolvedContext =
+      dialogContext ?? (peerId ? this.buildDialogMemoryContext(peerId, messages) : undefined);
+    await this.worker.call('processNewMessages', [messages, resolvedContext]);
+    this.broadcastMemoryGraphUpdated(peerId);
   }
 
   private resolveAccountSlot(): string {
@@ -585,23 +622,18 @@ export class AgentController {
 
       // 1. Local-first: collect cached messages in [fromDate, toDate]
       const collectedMessages = new Map<number, AgentMessageRecord>();
+      const messageStore = this.ensureMessageStore?.(peerId);
 
-      if (this.ensureMessageStore) {
-        const store = this.ensureMessageStore(peerId);
-        const allData = store.getAllData();
+      if (messageStore) {
+        const allData = messageStore.getAllData();
         for (const [idStr, msg] of allData) {
           const numId = Number(idStr);
-          if (!numId || !msg || msg.isEmpty || !msg.message?.trim()) continue;
+          if (!numId || !msg || msg.isEmpty) continue;
+          const record = this.toAgentMessageRecord(peerId, msg, messageStore);
+          if (!record.message?.trim() && !record.media?.summary?.trim()) continue;
           const msgDateMs = (msg.date ?? 0) * 1000;
           if (msgDateMs >= fromDate && msgDateMs <= toDate) {
-            collectedMessages.set(numId, {
-              id: `${peerId}:${numId}`,
-              peerId,
-              date: msg.date ?? Math.floor(Date.now() / 1000),
-              message: msg.message,
-              out: Boolean(msg.out),
-              fromId: msg.fromId ? String(msg.fromId) : undefined,
-            });
+            collectedMessages.set(numId, record);
           }
         }
       }
@@ -643,29 +675,26 @@ export class AgentController {
           let newMessagesAdded = 0;
           for (const msg of result.messages) {
             const rawMsg = msg as any;
-            if (!msg || rawMsg.isEmpty || !msg.message?.trim()) continue;
+            if (!msg || rawMsg.isEmpty) continue;
             const msgDateMs = (msg.date ?? 0) * 1000;
             const numId = Number(msg.id);
             if (!numId) continue;
             if (msgDateMs < fromDate) {
               reachedStart = true;
             } else if (msgDateMs <= toDate) {
-              const rawFromId = rawMsg.fromId ?? rawMsg.from_id;
-              collectedMessages.set(numId, {
-                id: `${peerId}:${msg.id}`,
+              const storedMsg =
+                typeof messageStore?.get === 'function'
+                  ? messageStore.get(String(numId))
+                  : undefined;
+              const record = this.toAgentMessageRecord(
                 peerId,
-                date: msg.date,
-                message: msg.message,
-                out: Boolean(msg.out),
-                fromId: rawFromId
-                  ? String(
-                      typeof rawFromId === 'object'
-                        ? rawFromId.user_id ?? rawFromId.chat_id ?? rawFromId.channel_id ?? ''
-                        : rawFromId,
-                    )
-                  : undefined,
-              });
-              newMessagesAdded++;
+                storedMsg ?? rawMsg,
+                messageStore,
+              );
+              if (record.message?.trim() || record.media?.summary?.trim()) {
+                collectedMessages.set(numId, record);
+                newMessagesAdded++;
+              }
             }
             if (currentOffsetId === undefined || numId < currentOffsetId) {
               currentOffsetId = numId;
@@ -683,13 +712,15 @@ export class AgentController {
         (a, b) => a.date - b.date || a.id.localeCompare(b.id, undefined, { numeric: true }),
       );
 
-      // 4. Process in chunks of 20 with 'memory extraction' cost source
+      // 4. Process in chunks of 20 with 'memory extraction' cost source and scoped DialogMemoryContext
       const CHUNK_SIZE = 20;
       for (let i = 0; i < sortedRecords.length; i += CHUNK_SIZE) {
         const chunk = sortedRecords.slice(i, i + CHUNK_SIZE);
+        const dialogContext = this.buildDialogMemoryContext(peerId, chunk);
         const res = await this.worker.call('processMessagesWithCost', [
           chunk,
           'memory extraction',
+          dialogContext,
         ]);
         totalProcessed += chunk.length;
         totalMemoriesCreated += res?.memoriesCreated ?? 0;
@@ -752,20 +783,15 @@ export class AgentController {
   @Method()
   async handleIncomingMessage(entity: MessageEntity): Promise<void> {
     if (!this.isLeader()) return;
-    if (!entity.peerId || !entity.message?.trim() || entity.isEmpty) return;
+    if (!entity.peerId || entity.isEmpty) return;
 
     try {
       const syncRecord = await this.getDialogMemorySync(entity.peerId);
       if (!syncRecord?.incrementalSync) return;
 
-      const record: AgentMessageRecord = {
-        id: `${entity.peerId}:${entity.id}`,
-        peerId: entity.peerId,
-        date: entity.date ?? Math.floor(Date.now() / 1000),
-        message: entity.message,
-        out: Boolean(entity.out),
-        fromId: entity.fromId ? String(entity.fromId) : undefined,
-      };
+      const messageStore = this.ensureMessageStore?.(entity.peerId);
+      const record = this.toAgentMessageRecord(entity.peerId, entity, messageStore);
+      if (!record.message?.trim() && !record.media?.summary?.trim()) return;
 
       await this.enqueueIncrementalMessage(record);
     } catch (err) {
@@ -841,7 +867,12 @@ export class AgentController {
 
     try {
       await this.ensureModelConfigured();
-      await this.worker.call('processMessagesWithCost', [batch, 'memory extraction']);
+      const dialogContext = this.buildDialogMemoryContext(peerId, batch);
+      await this.worker.call('processMessagesWithCost', [
+        batch,
+        'memory extraction',
+        dialogContext,
+      ]);
       await this.worker.call('upsertDialogMemorySync', [
         {
           peerId,
@@ -882,5 +913,337 @@ export class AgentController {
   @Method()
   getWorkerClient(): AgentWorkerClient {
     return this.worker;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Message & Dialog Context Enrichment Helpers
+  // ---------------------------------------------------------------------------
+
+  private toAgentMessageRecord(
+    peerId: string,
+    rawMsg: {
+      id: number | string;
+      date?: number;
+      message?: string;
+      out?: boolean;
+      fromId?: string;
+      from_id?: unknown;
+      replyTo?: TypeMessageReplyHeader;
+      entities?: TypeMessageEntity[];
+      fwdFrom?: TypeMessageFwdHeader;
+      media?: TypeMessageMedia;
+    },
+    messageStore?: MessageStore,
+  ): AgentMessageRecord {
+    const rawFromId = rawMsg.fromId ?? rawMsg.from_id;
+    let fromId: string | undefined;
+    if (rawFromId) {
+      if (typeof rawFromId === 'object' && rawFromId !== null) {
+        const obj = rawFromId as Record<string, unknown>;
+        const idVal =
+          obj.userId ?? obj.user_id ?? obj.chatId ?? obj.chat_id ?? obj.channelId ?? obj.channel_id;
+        fromId = idVal ? String(idVal) : undefined;
+      } else {
+        fromId = String(rawFromId);
+      }
+    }
+
+    const currentUser = this.globalStore?.auth.currentUser as { id?: string } | null | undefined;
+    if (!fromId && rawMsg.out && currentUser?.id) {
+      fromId = String(currentUser.id);
+    }
+
+    const text = rawMsg.message ?? '';
+    const replyHeader = resolveMessageReplyHeader(rawMsg.replyTo);
+    let replyTo: AgentMessageReplyContext | undefined;
+    let threadId: string | undefined;
+
+    if (replyHeader) {
+      if (replyHeader.forumTopic) {
+        const topId = replyHeader.replyToTopId ?? replyHeader.replyToMsgId;
+        if (topId != null) {
+          threadId = String(topId);
+        }
+      }
+      if (replyHeader.replyToMsgId != null) {
+        const targetIdStr = String(replyHeader.replyToMsgId);
+        const repliedMsg =
+          typeof messageStore?.get === 'function' ? messageStore.get(targetIdStr) : undefined;
+        const quoteText = buildReplyPreviewText(replyHeader, repliedMsg);
+        const replyFromId = replySenderPeerId(replyHeader.replyFrom, repliedMsg);
+        replyTo = {
+          messageId: targetIdStr,
+          ...(replyFromId ? { fromId: replyFromId } : {}),
+          ...(quoteText && quoteText !== 'Message' ? { quoteText } : {}),
+        };
+      }
+    }
+
+    const mentions = this.extractMessageMentions(text, rawMsg.entities);
+    const fwdFrom = this.extractForwardContext(rawMsg.fwdFrom);
+    const media = this.extractMediaContext(rawMsg.media);
+
+    return {
+      id: `${peerId}:${rawMsg.id}`,
+      peerId,
+      date: rawMsg.date ?? Math.floor(Date.now() / 1000),
+      message: text,
+      out: Boolean(rawMsg.out),
+      ...(fromId ? { fromId } : {}),
+      ...(threadId ? { threadId } : {}),
+      ...(replyTo ? { replyTo } : {}),
+      ...(mentions.length > 0 ? { mentions } : {}),
+      ...(fwdFrom ? { fwdFrom } : {}),
+      ...(media ? { media } : {}),
+    };
+  }
+
+  private extractMessageMentions(
+    text: string,
+    entities: TypeMessageEntity[] | undefined,
+  ): AgentMessageMention[] {
+    if (!entities || entities.length === 0 || !text) return [];
+    const mentions: AgentMessageMention[] = [];
+
+    for (const entity of entities) {
+      if (
+        entity.className !== 'MessageEntityMention' &&
+        entity.className !== 'MessageEntityMentionName'
+      ) {
+        continue;
+      }
+      const surfaceText = text.slice(entity.offset, entity.offset + entity.length).trim();
+      if (!surfaceText) continue;
+
+      if (entity.className === 'MessageEntityMentionName') {
+        const rawUid = 'userId' in entity ? entity.userId : undefined;
+        let peerId: string | undefined;
+        if (typeof rawUid === 'string' || typeof rawUid === 'number') {
+          peerId = String(rawUid);
+        } else if (rawUid && typeof rawUid === 'object' && 'userId' in rawUid) {
+          peerId = String((rawUid as { userId: unknown }).userId);
+        }
+        const userEntity = peerId ? this.lookupPeerParticipant(peerId) : undefined;
+        mentions.push({
+          text: surfaceText,
+          ...(peerId ? { peerId } : {}),
+          ...(userEntity?.username ? { username: userEntity.username } : {}),
+        });
+      } else if (entity.className === 'MessageEntityMention') {
+        const username = surfaceText.startsWith('@') ? surfaceText.slice(1) : surfaceText;
+        const matchedPeer = this.findUserByUsername(username);
+        mentions.push({
+          text: surfaceText,
+          username,
+          ...(matchedPeer ? { peerId: matchedPeer.id } : {}),
+        });
+      }
+    }
+
+    return mentions;
+  }
+
+  private extractForwardContext(
+    fwdFrom: TypeMessageFwdHeader | undefined,
+  ): AgentMessageForwardContext | undefined {
+    if (!fwdFrom) return undefined;
+    const fromId = peerIdFromTypePeer(fwdFrom.fromId);
+    const fromName = fwdFrom.fromName?.trim() || fwdFrom.postAuthor?.trim() || undefined;
+    if (!fromId && !fromName) return undefined;
+    return {
+      ...(fromId ? { fromId } : {}),
+      ...(fromName ? { fromName } : {}),
+      ...(fwdFrom.date ? { date: fwdFrom.date } : {}),
+    };
+  }
+
+  private extractMediaContext(
+    media: TypeMessageMedia | undefined,
+  ): AgentMessageMediaContext | undefined {
+    if (!media || typeof media !== 'object') return undefined;
+
+    if ('poll' in media && media.poll && typeof media.poll === 'object') {
+      const poll = media.poll as { question?: { text?: string } | string };
+      const questionText =
+        typeof poll.question === 'string'
+          ? poll.question
+          : typeof poll.question?.text === 'string'
+            ? poll.question.text
+            : undefined;
+      return {
+        type: 'poll',
+        ...(questionText ? { summary: `Poll: ${questionText}` } : {}),
+      };
+    }
+
+    if ('phoneNumber' in media) {
+      const contact = media as { firstName?: string; lastName?: string; phoneNumber?: string };
+      const name = [contact.firstName, contact.lastName].filter(Boolean).join(' ');
+      const summary = [name, contact.phoneNumber].filter(Boolean).join(' ');
+      return {
+        type: 'contact',
+        ...(summary ? { summary } : {}),
+      };
+    }
+
+    if ('venueId' in media || 'geo' in media) {
+      const venue = media as { title?: string; address?: string };
+      const summary = [venue.title, venue.address].filter(Boolean).join(', ');
+      return {
+        type: 'location',
+        ...(summary ? { summary } : {}),
+      };
+    }
+
+    if ('document' in media && media.document && typeof media.document === 'object') {
+      const doc = media.document as { attributes?: Array<Record<string, unknown>>; mimeType?: string };
+      let fileName: string | undefined;
+      for (const attr of doc.attributes ?? []) {
+        if (attr && typeof attr.fileName === 'string' && attr.fileName) {
+          fileName = attr.fileName;
+          break;
+        }
+      }
+      const isVoice = Boolean('voice' in media && media.voice);
+      const isVideo = Boolean(('video' in media && media.video) || ('round' in media && media.round));
+      return {
+        type: isVoice ? 'voice' : isVideo ? 'video' : 'document',
+        ...(fileName ? { fileName } : {}),
+      };
+    }
+
+    if ('photo' in media && media.photo) {
+      return { type: 'photo' };
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Build `DialogMemoryContext` for a batch of messages in `peerId`.
+   * The `peers` map is scoped strictly to the peers referenced in `records`.
+   */
+  private buildDialogMemoryContext(
+    peerId: string,
+    records: AgentMessageRecord[],
+  ): DialogMemoryContext {
+    const peerType = dialogPeerKindFromId(peerId);
+    const dialogPeer = this.lookupPeerParticipant(peerId);
+    const referencedPeerIds = new Set<string>();
+
+    const currentUser = this.globalStore?.auth.currentUser as
+      | { id?: string; firstName?: string; lastName?: string; username?: string }
+      | null
+      | undefined;
+    const currentUserId = currentUser?.id ? String(currentUser.id) : undefined;
+
+    for (const rec of records) {
+      if (rec.fromId) referencedPeerIds.add(rec.fromId);
+      if (rec.out && currentUserId) referencedPeerIds.add(currentUserId);
+      if (rec.replyTo?.fromId) referencedPeerIds.add(rec.replyTo.fromId);
+      if (rec.fwdFrom?.fromId) referencedPeerIds.add(rec.fwdFrom.fromId);
+      for (const mention of rec.mentions ?? []) {
+        if (mention.peerId) {
+          referencedPeerIds.add(mention.peerId);
+        } else if (mention.username) {
+          const byUsername = this.findUserByUsername(mention.username);
+          if (byUsername) referencedPeerIds.add(byUsername.id);
+        }
+      }
+    }
+
+    // For 1:1 user dialogs, always include the dialog partner in the participant map
+    if (peerType === 'user') {
+      referencedPeerIds.add(peerId);
+    }
+
+    const peers: Record<string, DialogParticipantInfo> = {};
+    for (const id of referencedPeerIds) {
+      const info = this.lookupPeerParticipant(id);
+      if (info) {
+        peers[id] = info;
+      } else if (currentUserId && id === currentUserId && currentUser) {
+        const name = [currentUser.firstName, currentUser.lastName].filter(Boolean).join(' ');
+        peers[id] = {
+          id,
+          ...(name ? { name } : {}),
+          ...(currentUser.username ? { username: currentUser.username } : {}),
+          type: 'user',
+          isSelf: true,
+        };
+      }
+    }
+
+    return {
+      peerId,
+      ...(dialogPeer?.name ? { peerName: dialogPeer.name } : {}),
+      peerType,
+      ...(Object.keys(peers).length > 0 ? { peers } : {}),
+    };
+  }
+
+  private lookupPeerParticipant(peerId: string): DialogParticipantInfo | undefined {
+    if (!this.storeManager) return undefined;
+    const kind = dialogPeerKindFromId(peerId);
+    const currentUser = this.globalStore?.auth.currentUser as { id?: string } | null | undefined;
+    const isSelfId = Boolean(currentUser?.id && String(currentUser.id) === peerId);
+
+    if (kind === 'user' && this.storeManager.has('user')) {
+      const user = this.storeManager.get('user').get(peerId);
+      if (user) {
+        const name = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.username;
+        return {
+          id: peerId,
+          ...(name ? { name } : {}),
+          ...(user.username ? { username: user.username } : {}),
+          type: 'user',
+          ...(user.self || isSelfId ? { isSelf: true } : {}),
+        };
+      }
+    } else if (kind === 'channel' && this.storeManager.has('channel')) {
+      const channel = this.storeManager.get('channel').get(peerId) ??
+        this.storeManager.get('channel').get(peerId.replace(/^-100/, ''));
+      if (channel) {
+        return {
+          id: peerId,
+          ...(channel.title ? { name: channel.title } : {}),
+          ...(channel.username ? { username: channel.username } : {}),
+          type: 'channel',
+        };
+      }
+    } else if (this.storeManager.has('chat')) {
+      const chat = this.storeManager.get('chat').get(peerId) ??
+        this.storeManager.get('chat').get(peerId.replace(/^-/, ''));
+      if (chat) {
+        return {
+          id: peerId,
+          ...(chat.title ? { name: chat.title } : {}),
+          type: 'chat',
+        };
+      }
+    }
+
+    return undefined;
+  }
+
+  private findUserByUsername(username: string): DialogParticipantInfo | undefined {
+    if (!this.storeManager || !this.storeManager.has('user')) return undefined;
+    const target = username.replace(/^@/, '').trim().toLowerCase();
+    if (!target) return undefined;
+
+    const userStore = this.storeManager.get('user');
+    for (const [, user] of userStore.getAllData()) {
+      if (user?.username && user.username.toLowerCase() === target) {
+        const name = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.username;
+        return {
+          id: String(user.id),
+          ...(name ? { name } : {}),
+          username: user.username,
+          type: 'user',
+          ...(user.self ? { isSelf: true } : {}),
+        };
+      }
+    }
+    return undefined;
   }
 }

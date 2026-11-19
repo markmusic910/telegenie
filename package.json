@@ -23,6 +23,7 @@
     "eval": "yarn workspace @telegenie/agent eval",
     "eval:intent": "yarn workspace @telegenie/agent eval:intent",
     "eval:memory": "yarn workspace @telegenie/agent eval:memory",
+    "eval:memory-engine": "yarn workspace @telegenie/agent eval:memory-engine",
     "eval:judge": "yarn workspace @telegenie/agent eval:judge",
     "eval:view": "yarn workspace @telegenie/agent eval:view",
     "preview": "yarn workspace @telegenie/web preview",
