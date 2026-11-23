@@ -1,4 +1,10 @@
-import { AIMessage, SystemMessage } from '@langchain/core/messages';
+import {
+  AIMessage,
+  AIMessageChunk,
+  SystemMessage,
+  ToolMessage,
+} from '@langchain/core/messages';
+import { END } from '@langchain/langgraph';
 import { ContextBuilder, DEFAULT_TONE_PROMPTS } from '../runtime/context-builder';
 import type { Retriever } from '../runtime/retriever';
 import { getTabPageClient, hasTabPageClient } from '../worker/tab-page-client';
@@ -9,8 +15,11 @@ import {
   buildContextPrompt,
 } from './prompts';
 import type { AgentGraphState } from './state';
+import { resolveAgentTools } from './tools';
 
 import { presetService } from '../preset/preset.service';
+
+export const MAX_TOOL_ITERATIONS = 5;
 
 // Module-level retriever injected via initNodes() during worker startup
 let _retriever: Retriever | undefined;
@@ -126,40 +135,66 @@ export async function retrieveNode(
 ): Promise<Partial<AgentGraphState>> {
   const retriever = getRetriever();
   const userMessage = state.messages[state.messages.length - 1];
-  const userText =
-    typeof userMessage?.content === 'string' ? userMessage.content : '';
+  const userText = extractText(userMessage?.content);
   const intent = state.intent;
 
   let retrievedMemories = state.retrievedMemories;
   let retrievedEntities = state.retrievedEntities;
   let retrievedMessages = state.retrievedMessages;
   let dialogPreset = state.dialogPreset;
+  let dialogContext = state.dialogContext;
 
   if (state.peerId) {
     dialogPreset = await retriever.getDialogPreset(state.peerId);
   }
 
-  if (intent === 'FOLLOW_UP') {
-    const graphResult = await retriever.searchKnowledgeGraph(userText, state.peerId);
-    retrievedMemories = graphResult.memories;
-    retrievedEntities = graphResult.entities;
-    retrievedMessages = await retriever.searchMessages(userText, state.peerId);
-  } else if (intent === 'PREFERENCE') {
-    retrievedMemories = await retriever.searchMemories(undefined, 'PREFERENCE');
-    retrievedEntities = [];
-  } else if (intent === 'FACT') {
-    const graphResult = await retriever.searchKnowledgeGraph(userText, state.peerId);
-    retrievedMemories = graphResult.memories;
-    retrievedEntities = graphResult.entities;
+  if (intent === 'PREFERENCE') {
+    const prefMemories = await retriever.searchMemories(undefined, 'PREFERENCE');
+    if (state.peerId) {
+      const graphResult = await retriever.searchKnowledgeGraph(userText, state.peerId);
+      const memById = new Map(prefMemories.map((m) => [m.id, m]));
+      for (const m of graphResult.memories) {
+        if (!memById.has(m.id)) memById.set(m.id, m);
+      }
+      retrievedMemories = Array.from(memById.values());
+      retrievedEntities = graphResult.entities;
+    } else {
+      retrievedMemories = prefMemories;
+      retrievedEntities = [];
+    }
   } else {
-    // GENERAL / other: hybrid knowledge graph search + messages
+    // FOLLOW_UP / FACT / GENERAL / other: hybrid knowledge graph search
     const graphResult = await retriever.searchKnowledgeGraph(userText, state.peerId);
     retrievedMemories = graphResult.memories;
     retrievedEntities = graphResult.entities;
-    retrievedMessages = await retriever.searchMessages(userText, state.peerId);
   }
 
-  return { retrievedMemories, retrievedEntities, retrievedMessages, dialogPreset };
+  if (state.peerId) {
+    // Always include recent conversation messages from the attached dialog
+    // (merging cached conversation history and keyword matches).
+    const [cachedRecent, matched] = await Promise.all([
+      retriever.getConversation(state.peerId, 30).catch(() => []),
+      retriever.searchMessages(userText, state.peerId, 15).catch(() => []),
+    ]);
+
+    const mergedById = new Map<string, (typeof cachedRecent)[number]>();
+    for (const msg of [...cachedRecent, ...matched]) {
+      if (!mergedById.has(msg.id)) {
+        mergedById.set(msg.id, msg);
+      }
+    }
+    retrievedMessages = Array.from(mergedById.values())
+      .sort((a, b) => b.date - a.date)
+      .slice(0, 30);
+
+    dialogContext = await retriever
+      .getDialogContext(state.peerId, retrievedMessages)
+      .catch(() => ({ peerId: state.peerId! }));
+  } else if (intent !== 'PREFERENCE') {
+    retrievedMessages = await retriever.searchMessages(userText, undefined, 20).catch(() => []);
+  }
+
+  return { retrievedMemories, retrievedEntities, retrievedMessages, dialogPreset, dialogContext };
 }
 
 // ---------------------------------------------------------------------------
@@ -191,6 +226,8 @@ export async function generateNode(
     memories: state.retrievedMemories,
     messages: state.retrievedMessages,
     entities: state.retrievedEntities ?? [],
+    peerId: state.peerId,
+    dialogContext: state.dialogContext,
     dialogPreset: state.dialogPreset,
     activeSkills,
     userIdentity,
@@ -229,6 +266,13 @@ export async function generateNode(
   const msgCount = state.retrievedMessages?.length ?? 0;
 
   const traceSteps: string[] = [];
+  const activePeerId = state.dialogContext?.peerId ?? state.peerId;
+  if (activePeerId) {
+    const dialogLabel = state.dialogContext?.peerName
+      ? `${state.dialogContext.peerName} (${activePeerId})`
+      : activePeerId;
+    traceSteps.push(`• Active Dialog: ${dialogLabel}`);
+  }
   if (state.intent) {
     traceSteps.push(`• Classified Intent: ${state.intent}`);
   }
@@ -263,16 +307,35 @@ export async function generateNode(
   if (state.model) {
     traceSteps.push(`• Model: ${state.model}`);
   }
+  if (state.toolTraceSteps?.length) {
+    traceSteps.push(...state.toolTraceSteps);
+  }
 
   const runId = state.runId || 'active_run';
+  const canCallTools = (state.toolIterations ?? 0) < MAX_TOOL_ITERATIONS;
+  const { tools: activeTools } = canCallTools
+    ? resolveAgentTools({
+        context: { runId, peerId: activePeerId },
+        scope: 'chat',
+      })
+    : { tools: [] };
+
+  const runnableModel =
+    activeTools.length > 0 && typeof model.bindTools === 'function'
+      ? model.bindTools(activeTools)
+      : model;
 
   if (hasTabPageClient()) {
     try {
       const client = getTabPageClient();
-      const stream = await model.stream(allMessages);
+      const stream = await runnableModel.stream(allMessages);
       let fullContent = '';
       let streamThinking = '';
+      let aggregatedChunk: AIMessageChunk | undefined;
       for await (const chunk of stream) {
+        if (chunk instanceof AIMessageChunk) {
+          aggregatedChunk = aggregatedChunk ? aggregatedChunk.concat(chunk) : chunk;
+        }
         const chunkThinking = extractThinking(chunk.content);
         if (chunkThinking) {
           streamThinking += chunkThinking;
@@ -287,8 +350,14 @@ export async function generateNode(
         ? `${streamThinking.trim()}\n\n---\nExecution trace:\n${traceSteps.join('\n')}`
         : traceSteps.join('\n');
 
+      const toolCalls = aggregatedChunk?.tool_calls;
+      const aiMessage = new AIMessage({
+        content: fullContent,
+        ...(toolCalls && toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
+      });
+
       return {
-        messages: [new AIMessage(fullContent)],
+        messages: [aiMessage],
         thought: fullThought,
       };
     } catch (err) {
@@ -296,15 +365,207 @@ export async function generateNode(
     }
   }
 
-  const response = await model.invoke(allMessages);
+  const response = (await runnableModel.invoke(allMessages)) as AIMessage;
   const text = extractText(response.content);
   const rawThinking = extractThinking(response.content);
   const fullThought = rawThinking.trim()
     ? `${rawThinking.trim()}\n\n---\nExecution trace:\n${traceSteps.join('\n')}`
     : traceSteps.join('\n');
 
+  const toolCalls = Array.isArray(response.tool_calls) ? response.tool_calls : undefined;
+  const aiMessage = new AIMessage({
+    content: text,
+    ...(toolCalls && toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
+  });
+
   return {
-    messages: [new AIMessage(text)],
+    messages: [aiMessage],
     thought: fullThought,
   };
+}
+
+// ---------------------------------------------------------------------------
+// toolsNode — execute LLM tool calls, audit to ToolCallRepository, stream events
+// ---------------------------------------------------------------------------
+
+function safeJsonParse(value: string): unknown {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
+export async function toolsNode(
+  state: AgentGraphState,
+): Promise<Partial<AgentGraphState>> {
+  const lastMessage = state.messages[state.messages.length - 1];
+  const toolCalls =
+    lastMessage instanceof AIMessage && Array.isArray(lastMessage.tool_calls)
+      ? lastMessage.tool_calls
+      : [];
+
+  if (toolCalls.length === 0) {
+    return {};
+  }
+
+  const runId = state.runId || 'active_run';
+  const activePeerId = state.dialogContext?.peerId ?? state.peerId;
+  const { toolsByName } = resolveAgentTools({
+    context: { runId, peerId: activePeerId },
+    scope: 'chat',
+  });
+
+  let toolCallRepo: import('../agent-db/repository/tool-call.repository').ToolCallRepository | undefined;
+  try {
+    const { getWorkerState } = await import('../worker/agent-worker-init');
+    toolCallRepo = getWorkerState().toolCallRepo;
+  } catch {
+    // Worker state not initialized (e.g. standalone unit tests)
+  }
+
+  const client = hasTabPageClient() ? getTabPageClient() : undefined;
+  const toolMessages: ToolMessage[] = [];
+  const toolTraceSteps: string[] = [];
+
+  for (let index = 0; index < toolCalls.length; index++) {
+    const tc = toolCalls[index];
+    const toolName = tc.name;
+    const toolCallId = tc.id || `${runId}_tc_${state.toolIterations ?? 0}_${index}`;
+    const args = (tc.args && typeof tc.args === 'object' ? tc.args : {}) as Record<string, unknown>;
+
+    const auditRecord = toolCallRepo
+      ? await toolCallRepo.insert(runId, toolName, args).catch(() => undefined)
+      : undefined;
+
+    if (client) {
+      void client
+        .call('toolCallEvent', [
+          {
+            runId,
+            toolCallId,
+            toolName,
+            status: 'start',
+            args,
+          },
+        ])
+        .catch(() => {});
+    }
+
+    const matchedTool = toolsByName.get(toolName);
+    if (!matchedTool) {
+      const errorMsg = `Tool "${toolName}" is not available.`;
+      if (auditRecord && toolCallRepo) {
+        await toolCallRepo.updateResult(auditRecord.id, 'FAILED', undefined, errorMsg).catch(() => {});
+      }
+      if (client) {
+        void client
+          .call('toolCallEvent', [
+            {
+              runId,
+              toolCallId,
+              toolName,
+              status: 'error',
+              args,
+              error: errorMsg,
+            },
+          ])
+          .catch(() => {});
+      }
+      toolTraceSteps.push(`• Tool ${toolName}: failed (${errorMsg})`);
+      toolMessages.push(
+        new ToolMessage({
+          tool_call_id: toolCallId,
+          name: toolName,
+          content: JSON.stringify({ error: errorMsg }),
+        }),
+      );
+      continue;
+    }
+
+    try {
+      const rawResult = await matchedTool.invoke(args);
+      const contentStr =
+        typeof rawResult === 'string' ? rawResult : JSON.stringify(rawResult ?? { ok: true });
+      const parsedResult = typeof rawResult === 'string' ? safeJsonParse(rawResult) : rawResult;
+
+      if (auditRecord && toolCallRepo) {
+        await toolCallRepo.updateResult(auditRecord.id, 'COMPLETED', parsedResult).catch(() => {});
+      }
+      if (client) {
+        void client
+          .call('toolCallEvent', [
+            {
+              runId,
+              toolCallId,
+              toolName,
+              status: 'result',
+              args,
+              result: parsedResult,
+            },
+          ])
+          .catch(() => {});
+      }
+      toolTraceSteps.push(`• Tool ${toolName}: completed`);
+      toolMessages.push(
+        new ToolMessage({
+          tool_call_id: toolCallId,
+          name: toolName,
+          content: contentStr,
+        }),
+      );
+    } catch (err) {
+      const errorMsg = (err as Error)?.message || `Tool "${toolName}" execution failed.`;
+      if (auditRecord && toolCallRepo) {
+        await toolCallRepo.updateResult(auditRecord.id, 'FAILED', undefined, errorMsg).catch(() => {});
+      }
+      if (client) {
+        void client
+          .call('toolCallEvent', [
+            {
+              runId,
+              toolCallId,
+              toolName,
+              status: 'error',
+              args,
+              error: errorMsg,
+            },
+          ])
+          .catch(() => {});
+      }
+      toolTraceSteps.push(`• Tool ${toolName}: failed (${errorMsg})`);
+      toolMessages.push(
+        new ToolMessage({
+          tool_call_id: toolCallId,
+          name: toolName,
+          content: JSON.stringify({ error: errorMsg }),
+        }),
+      );
+    }
+  }
+
+  return {
+    messages: toolMessages,
+    toolIterations: (state.toolIterations ?? 0) + 1,
+    toolTraceSteps,
+  };
+}
+
+/**
+ * Conditional router after `generateNode`: continue to `tools` when the LLM requested
+ * tool calls and we are under `MAX_TOOL_ITERATIONS`; otherwise finish.
+ */
+export function shouldContinueTools(state: AgentGraphState): 'tools' | typeof END {
+  if ((state.toolIterations ?? 0) >= MAX_TOOL_ITERATIONS) {
+    return END;
+  }
+  const lastMessage = state.messages[state.messages.length - 1];
+  if (
+    lastMessage instanceof AIMessage &&
+    Array.isArray(lastMessage.tool_calls) &&
+    lastMessage.tool_calls.length > 0
+  ) {
+    return 'tools';
+  }
+  return END;
 }

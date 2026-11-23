@@ -20,18 +20,20 @@ import {
 import { observer } from 'mobx-react-lite';
 import { useState } from 'react';
 
+import GenieConfigDialog from '@/components/genie/genie-config.dialog';
 import {
-  DEFAULT_MODEL_ID,
   MODEL_PROVIDERS,
-  SUPPORTED_MODELS,
-  getModelProvider,
+  SUPPORTED_MODELS
 } from '@/components/genie/genie-models.constants';
 import { useGenieRuntime } from '@/components/genie/genie-runtime.adapter';
-import GenieConfigDialog from '@/components/genie/genie-config.dialog';
+import GenieToolCallsList, {
+  safeExtractToolCalls,
+  type GenieToolCallItem,
+} from '@/components/genie/genie-tool-calls.list';
 import { Button } from '@/lib/components/ui/button';
 import { useDialogPeer, useSDK, useStore } from '@/lib/contexts/sdk.context';
-import { fallbackPeerDisplay } from '@telegenie/sdk';
 import { BUILTIN_PRESETS } from '@telegenie/agent';
+import { fallbackPeerDisplay } from '@telegenie/sdk';
 
 export interface GenieCopilotPanelProps {
   peerId?: string;
@@ -66,8 +68,8 @@ function safeExtractContentText(content: unknown): string {
         if (!p) return '';
         if (typeof p === 'string') return p;
         if (typeof p === 'object') {
-          // Explicitly ignore reasoning / thought parts
-          if (p.type === 'reasoning') return '';
+          // Explicitly ignore reasoning / tool-call parts
+          if (p.type === 'reasoning' || p.type === 'tool-call') return '';
           if (p.type === 'text') {
             if (typeof p.text === 'string') return p.text;
             if (p.text && typeof p.text === 'object') return JSON.stringify(p.text);
@@ -221,6 +223,7 @@ export const GenieCopilotPanel = observer(function GenieCopilotPanel({
                 const isUser = message.role === 'user';
                 const text = safeExtractContentText(message.content);
                 const thought = safeExtractReasoningText(message.content);
+                const toolCalls = safeExtractToolCalls(message.content);
 
                 if (isUser) {
                   return (
@@ -233,7 +236,12 @@ export const GenieCopilotPanel = observer(function GenieCopilotPanel({
                 }
 
                 return (
-                  <AssistantMessageItem key={message.id} text={text} thought={thought} />
+                  <AssistantMessageItem
+                    key={message.id}
+                    text={text}
+                    thought={thought}
+                    toolCalls={toolCalls}
+                  />
                 );
               }}
             </ThreadPrimitive.Messages>
@@ -345,7 +353,15 @@ export const GenieCopilotPanel = observer(function GenieCopilotPanel({
   );
 });
 
-function AssistantMessageItem({ text, thought }: { text: string; thought?: string }) {
+function AssistantMessageItem({
+  text,
+  thought,
+  toolCalls = [],
+}: {
+  text: string;
+  thought?: string;
+  toolCalls?: GenieToolCallItem[];
+}) {
   const [isReasoningOpen, setIsReasoningOpen] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
 
@@ -378,6 +394,8 @@ function AssistantMessageItem({ text, thought }: { text: string; thought?: strin
           {thought}
         </div>
       )}
+
+      {toolCalls.length > 0 && <GenieToolCallsList toolCalls={toolCalls} />}
 
       {/* Assistant Text Bubble */}
       <div className="group relative rounded-2xl bg-muted/60 border border-border/40 px-3.5 py-2.5 text-xs leading-relaxed text-foreground shadow-sm min-w-0">

@@ -1,10 +1,12 @@
 import { getTabId } from '@telegenie/decorators';
+import type { TabPageToolDescriptor } from '@telegenie/libs/types/tab-page.api';
 import { AgentDb } from '../agent-db/agent-db';
 import { cleanupAgentDb } from '../agent-db/cleanup';
 import type { GenieSkill } from '../agent-db/agent-db.types';
 import { AgentMessageRepository } from '../agent-db/repository/agent-message.repository';
 import { AgentRunRepository } from '../agent-db/repository/agent-run.repository';
 import { DialogPresetRepository } from '../agent-db/repository/dialog-preset.repository';
+import { ToolCallRepository } from '../agent-db/repository/tool-call.repository';
 import { getGraph } from '../agent/graph';
 import { createChatModel, setModelConfig, type ModelConfig } from '../agent/models';
 import { initNodes } from '../agent/nodes';
@@ -26,9 +28,11 @@ export type AgentWorkerState = {
   dialogMemorySyncRepo: DialogMemorySyncRepository;
   agentRunRepo: AgentRunRepository;
   agentMessageRepo: AgentMessageRepository;
+  toolCallRepo: ToolCallRepository;
   memoryEngine: MemoryEngine | undefined; // only initialized after configureModel
   retriever: Retriever;
   installedSkills: GenieSkill[];
+  tabTools: TabPageToolDescriptor[];
   userIdentity?: string;
   accountSlot: string;
   tabId: string;
@@ -96,6 +100,7 @@ export async function initAgentWorker(
   const dialogMemorySyncRepo = new DialogMemorySyncRepository(agentDb);
   const agentRunRepo = new AgentRunRepository(agentDb);
   const agentMessageRepo = new AgentMessageRepository(agentDb);
+  const toolCallRepo = new ToolCallRepository(agentDb);
 
   const retriever = new Retriever({
     accountSlot,
@@ -120,9 +125,11 @@ export async function initAgentWorker(
     dialogMemorySyncRepo,
     agentRunRepo,
     agentMessageRepo,
+    toolCallRepo,
     memoryEngine: undefined,
     retriever,
     installedSkills: [],
+    tabTools: [],
     accountSlot,
     tabId,
   };

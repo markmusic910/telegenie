@@ -230,15 +230,11 @@ describe('Agent Controller Memory Sync & Incremental Extraction', () => {
       on: jest.fn().mockReturnValue(() => undefined),
     };
 
-    const mockMessages = new Map([
-      ['10', { id: '10', date: 100, message: 'Alice plans to move to Berlin next month', isEmpty: false, out: false }],
-      ['11', { id: '11', date: 110, message: 'Bob prefers TypeScript over Python', isEmpty: false, out: true }],
-      ['12', { id: '12', date: 200, message: 'Outside range', isEmpty: false, out: false }],
-    ]);
-
-    const mockMessageStore = {
-      getAllData: () => mockMessages,
-    };
+    const mockCachedMessages = [
+      { id: '10', date: 100, message: 'Alice plans to move to Berlin next month', isEmpty: false, out: false },
+      { id: '11', date: 110, message: 'Bob prefers TypeScript over Python', isEmpty: false, out: true },
+      { id: '12', date: 200, message: 'Outside range', isEmpty: false, out: false },
+    ];
 
     const globalStore = createTestStore(100);
 
@@ -246,7 +242,7 @@ describe('Agent Controller Memory Sync & Incremental Extraction', () => {
       createWorkerClient: () => mockWorkerClient as any,
       isLeader: () => true,
       broadcast: mockBroadcast as any,
-      ensureMessageStore: () => mockMessageStore as any,
+      loadCachedMessagesByPeer: async () => mockCachedMessages as any,
       globalStore,
     });
 
@@ -278,6 +274,70 @@ describe('Agent Controller Memory Sync & Incremental Extraction', () => {
     );
   });
 
+  it('loads cached messages directly from IndexedDB via loadCachedMessagesByPeer instead of in-memory store', async () => {
+    const capturedCalls: Array<{ method: string; args: unknown[] }> = [];
+    const mockWorkerClient = {
+      call: jest.fn().mockImplementation((method: string, args: unknown[]) => {
+        capturedCalls.push({ method, args });
+        return Promise.resolve();
+      }),
+      worker: {} as any,
+    };
+
+    const mockLoadCachedMessagesByPeer = jest.fn().mockResolvedValue([
+      {
+        id: '10',
+        peerId: 'dialog-idb',
+        date: 100,
+        message: 'Persisted in IDB even after RAM eviction',
+        isEmpty: false,
+        out: false,
+      },
+      {
+        id: '11',
+        peerId: 'dialog-idb',
+        date: 110,
+        message: 'Replying to IDB message',
+        isEmpty: false,
+        out: true,
+        replyTo: { className: 'MessageReplyHeader', replyToMsgId: 10 },
+      },
+    ]);
+
+    const mockMessageStore = {
+      getAllData: jest.fn(() => new Map()),
+      get: jest.fn(),
+    };
+
+    const globalStore = createTestStore(100);
+
+    const agent = new AgentController({
+      createWorkerClient: () => mockWorkerClient as any,
+      isLeader: () => true,
+      loadCachedMessagesByPeer: mockLoadCachedMessagesByPeer,
+      ensureMessageStore: () => mockMessageStore as any,
+      globalStore,
+    });
+
+    await agent.syncDialogMemory('dialog-idb', { fromDate: 50 * 1000, toDate: 150 * 1000 });
+
+    expect(mockLoadCachedMessagesByPeer).toHaveBeenCalledWith('dialog-idb');
+    expect(mockMessageStore.getAllData).not.toHaveBeenCalled();
+
+    const extractionCall = capturedCalls.find((c) => c.method === 'processMessagesWithCost');
+    expect(extractionCall).toBeDefined();
+    const records = extractionCall?.args[0] as Array<{
+      id: string;
+      message: string;
+      replyTo?: { messageId: string; quoteText?: string };
+    }>;
+    expect(records).toHaveLength(2);
+    expect(records[0].id).toBe('dialog-idb:10');
+    expect(records[1].id).toBe('dialog-idb:11');
+    expect(records[1].replyTo?.messageId).toBe('10');
+    expect(records[1].replyTo?.quoteText).toContain('Persisted in IDB');
+  });
+
   it('notifies local onMemorySyncComplete and updates IDB on sync failure', async () => {
     const capturedCalls: Array<{ method: string; args: unknown[] }> = [];
     const mockWorkerClient = {
@@ -296,13 +356,9 @@ describe('Agent Controller Memory Sync & Incremental Extraction', () => {
       on: jest.fn().mockReturnValue(() => undefined),
     };
 
-    const mockMessages = new Map([
-      ['10', { id: '10', date: 100, message: 'Test message', isEmpty: false, out: false }],
-    ]);
-
-    const mockMessageStore = {
-      getAllData: () => mockMessages,
-    };
+    const mockCachedMessages = [
+      { id: '10', date: 100, message: 'Test message', isEmpty: false, out: false },
+    ];
 
     const globalStore = createTestStore(100);
 
@@ -310,7 +366,7 @@ describe('Agent Controller Memory Sync & Incremental Extraction', () => {
       createWorkerClient: () => mockWorkerClient as any,
       isLeader: () => true,
       broadcast: mockBroadcast as any,
-      ensureMessageStore: () => mockMessageStore as any,
+      loadCachedMessagesByPeer: async () => mockCachedMessages as any,
       globalStore,
     });
 
@@ -353,9 +409,9 @@ describe('Agent Controller Memory Sync & Incremental Extraction', () => {
     };
 
     // Only message 20 is cached locally
-    const mockMessages = new Map([
-      ['20', { id: '20', date: 200, message: 'Newer local message', isEmpty: false, out: false }],
-    ]);
+    const mockCachedMessages = [
+      { id: '20', date: 200, message: 'Newer local message', isEmpty: false, out: false },
+    ];
 
     const mockLoadHistory = jest.fn().mockResolvedValue({
       messages: [
@@ -370,7 +426,7 @@ describe('Agent Controller Memory Sync & Incremental Extraction', () => {
       createWorkerClient: () => mockWorkerClient as any,
       isLeader: () => true,
       broadcast: mockBroadcast as any,
-      ensureMessageStore: () => ({ getAllData: () => mockMessages }) as any,
+      loadCachedMessagesByPeer: async () => mockCachedMessages as any,
       loadHistory: mockLoadHistory,
       globalStore,
     });

@@ -4,6 +4,7 @@ import type { AgentWorkerApi, ChatOptions, ChatResult } from './agent.api';
 import { getTabPageClient } from './tab-page-client';
 import { configureAgentModel, getWorkerState } from './agent-worker-init';
 import { getGraph } from '../agent/graph';
+import { runInputCompletion } from '../agent/input-completion';
 import { extractText } from '../agent/nodes';
 import { presetService } from '../preset/preset.service';
 import { createChatModel, type ModelConfig } from '../agent/models';
@@ -314,6 +315,15 @@ export function createAgentWorkerHandlers(): RpcHandlers<AgentWorkerApi> {
     invalidateMemoryGraph: async () => {
       const { memoryDb } = getWorkerState();
       await memoryDb.invalidateAndReload();
+    },
+
+    setTabTools: async (tools) => {
+      const state = getWorkerState();
+      state.tabTools = Array.isArray(tools) ? [...tools] : [];
+    },
+
+    completeInput: async (request) => {
+      return runInputCompletion(request);
     },
   };
 }

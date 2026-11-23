@@ -284,6 +284,10 @@ export class TeleGenieSDK {
       globalStore: this.globalStore,
       storeManager: this.store,
       loadHistory: (peerId, opts) => this.messageLoad.loadHistory(peerId, opts),
+      loadCachedMessagesByPeer: async (peerId) => {
+        if (!this.storeCache?.isOpen) return [];
+        return this.storeCache.loadMessagesByPeer(peerId);
+      },
       ensureMessageStore: (peerId) => this.ensureMessageStore(peerId),
       updateUiState: (payload) => {
         if (typeof payload.isLoading === 'boolean') {

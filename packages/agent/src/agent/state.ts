@@ -1,6 +1,6 @@
 import { Annotation, MessagesAnnotation } from '@langchain/langgraph';
 import type { Entity, Memory } from '../memory/db/memory-db.types';
-import type { AgentMessageRecord } from '../types/agent-message-record';
+import type { AgentMessageRecord, DialogMemoryContext } from '../types/agent-message-record';
 
 /**
  * Graph state for the TeleGenie Phase 1 agent.
@@ -38,6 +38,10 @@ export const AgentStateAnnotation = Annotation.Root({
     reducer: (_, next) => next,
     default: () => undefined,
   }),
+  dialogContext: Annotation<DialogMemoryContext | undefined>({
+    reducer: (_, next) => next,
+    default: () => undefined,
+  }),
   dialogPreset: Annotation<import('../agent-db/agent-db.types').DialogPreset | undefined>({
     reducer: (_, next) => next,
     default: () => undefined,
@@ -53,6 +57,14 @@ export const AgentStateAnnotation = Annotation.Root({
   thought: Annotation<string | undefined>({
     reducer: (_, next) => next,
     default: () => undefined,
+  }),
+  toolIterations: Annotation<number>({
+    reducer: (_, next) => next,
+    default: () => 0,
+  }),
+  toolTraceSteps: Annotation<string[]>({
+    reducer: (prev, next) => [...(prev ?? []), ...(next ?? [])],
+    default: () => [],
   }),
 });
 

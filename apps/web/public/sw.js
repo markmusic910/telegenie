@@ -288,7 +288,8 @@ var TAB_MSG = {
   leaderChallenge: "tab.leaderChallenge",
   memorySyncRequest: "tab.memorySyncRequest",
   memorySyncProgress: "tab.memorySyncProgress",
-  memorySyncComplete: "tab.memorySyncComplete"
+  memorySyncComplete: "tab.memorySyncComplete",
+  memoryGraphUpdated: "tab.memoryGraphUpdated"
 };
 var LEADER_HEARTBEAT_TTL_MS = 8e3;
 

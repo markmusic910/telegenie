@@ -1,17 +1,20 @@
-import { StateGraph, START, END, type CompiledStateGraph } from '@langchain/langgraph';
+import { StateGraph, START, END } from '@langchain/langgraph';
 import { AgentStateAnnotation } from './state';
-import { understandNode, retrieveNode, generateNode } from './nodes';
+import {
+  understandNode,
+  retrieveNode,
+  generateNode,
+  toolsNode,
+  shouldContinueTools,
+} from './nodes';
 import { createCheckpointer } from './checkpointer';
 
 export type TeleGenieGraph = ReturnType<typeof createGraph>;
 
 /**
- * Compile and return the TeleGenie Phase 1 agent graph.
+ * Compile and return the TeleGenie agent graph.
  *
- * Linear flow: UNDERSTAND → RETRIEVE → GENERATE → END
- *
- * Phase 2 will add conditional routing for tool calls:
- *   GENERATE → (tool calls?) → TOOL → GENERATE → END
+ * Flow: UNDERSTAND → RETRIEVE → GENERATE → (tool calls?) → TOOLS → GENERATE → END
  *
  * @see https://langchain-ai.github.io/langgraphjs/
  */
@@ -22,10 +25,15 @@ export function createGraph() {
     .addNode('understand', understandNode)
     .addNode('retrieve', retrieveNode)
     .addNode('generate', generateNode)
+    .addNode('tools', toolsNode)
     .addEdge(START, 'understand')
     .addEdge('understand', 'retrieve')
     .addEdge('retrieve', 'generate')
-    .addEdge('generate', END)
+    .addConditionalEdges('generate', shouldContinueTools, {
+      tools: 'tools',
+      [END]: END,
+    })
+    .addEdge('tools', 'generate')
     .compile({ checkpointer });
 }
 

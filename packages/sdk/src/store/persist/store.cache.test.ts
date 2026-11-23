@@ -140,6 +140,13 @@ describe('StoreCache', () => {
     const otherPeer = await cache.loadMessagesByIds('peer-2', ['9']);
     expect(otherPeer).toHaveLength(0);
 
+    const allForPeer1 = await cache.loadMessagesByPeer('peer-1');
+    expect(allForPeer1.map((m) => m.id).sort()).toEqual(['10', '9']);
+    expect((allForPeer1[0] as CachedMessageRow).cacheKey).toBeUndefined();
+
+    const allForPeer2 = await cache.loadMessagesByPeer('peer-2');
+    expect(allForPeer2).toHaveLength(0);
+
     cache.close();
   });
 

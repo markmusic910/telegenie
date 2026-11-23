@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@/lib/components/ui/button';
 import {
   AssistantRuntimeProvider,
   ComposerPrimitive,
@@ -13,37 +14,37 @@ import {
   ChevronRight,
   Copy,
   Pencil,
-  Plus,
   RefreshCw,
-  Settings,
   Sparkles,
-  X,
+  X
 } from 'lucide-react';
-import { Button } from '@/lib/components/ui/button';
 import { observer } from 'mobx-react-lite';
 import { useRouter } from 'next/navigation';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
+import {
+  getAllStoredApiKeys,
+  hasApiKeyForProvider,
+} from '@/components/genie/genie-api-keys';
 import {
   DEFAULT_MODEL_ID,
   MODEL_PROVIDERS,
   SUPPORTED_MODELS,
   getModelProvider,
 } from '@/components/genie/genie-models.constants';
-import {
-  getAllStoredApiKeys,
-  hasApiKeyForProvider,
-} from '@/components/genie/genie-api-keys';
-import { getInstalledSkills } from '@/components/genie/genie-skills.storage';
-import { getUserIdentity } from '@/components/genie/genie-user-identity.storage';
 import { useGenieRuntime } from '@/components/genie/genie-runtime.adapter';
 import GenieScheduledView from '@/components/genie/genie-scheduled.view';
 import GenieSearchView from '@/components/genie/genie-search.view';
 import GenieSidebar, { type GenieSidebarTab } from '@/components/genie/genie-sidebar';
-import GenieConfigDialog from '@/components/genie/genie-config.dialog';
+import { getInstalledSkills } from '@/components/genie/genie-skills.storage';
+import GenieToolCallsList, {
+  safeExtractToolCalls,
+  type GenieToolCallItem,
+} from '@/components/genie/genie-tool-calls.list';
+import { getUserIdentity } from '@/components/genie/genie-user-identity.storage';
 import { useDialogPeer, useSDK, useStore } from '@/lib/contexts/sdk.context';
-import { fallbackPeerDisplay } from '@telegenie/sdk';
 import type { AgentMessage, AgentPreset } from '@telegenie/agent/worker';
+import { fallbackPeerDisplay } from '@telegenie/sdk';
 
 function safeExtractReasoningText(content: unknown): string {
   if (!content) return '';
@@ -71,8 +72,8 @@ function safeExtractContentText(content: unknown): string {
         if (!p) return '';
         if (typeof p === 'string') return p;
         if (typeof p === 'object') {
-          // Explicitly ignore reasoning / thought parts
-          if (p.type === 'reasoning') return '';
+          // Explicitly ignore reasoning / tool-call parts
+          if (p.type === 'reasoning' || p.type === 'tool-call') return '';
           if (p.type === 'text') {
             if (typeof p.text === 'string') return p.text;
             if (p.text && typeof p.text === 'object') return JSON.stringify(p.text);
@@ -769,6 +770,7 @@ export const GenieGlobalContainer = observer(function GenieGlobalContainer({
                     const isUser = message.role === 'user';
                     const text = safeExtractContentText(message.content);
                     const thought = safeExtractReasoningText(message.content);
+                    const toolCalls = safeExtractToolCalls(message.content);
 
                     if (isUser) {
                       return (
@@ -780,7 +782,14 @@ export const GenieGlobalContainer = observer(function GenieGlobalContainer({
                       );
                     }
 
-                    return <GlobalAssistantMessageItem key={message.id} text={text} thought={thought} />;
+                    return (
+                      <GlobalAssistantMessageItem
+                        key={message.id}
+                        text={text}
+                        thought={thought}
+                        toolCalls={toolCalls}
+                      />
+                    );
                   }}
                 </ThreadPrimitive.Messages>
               </ThreadPrimitive.Viewport>
@@ -824,7 +833,15 @@ export const GenieGlobalContainer = observer(function GenieGlobalContainer({
   );
 });
 
-function GlobalAssistantMessageItem({ text, thought }: { text: string; thought?: string }) {
+function GlobalAssistantMessageItem({
+  text,
+  thought,
+  toolCalls = [],
+}: {
+  text: string;
+  thought?: string;
+  toolCalls?: GenieToolCallItem[];
+}) {
   const [isReasoningOpen, setIsReasoningOpen] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
 
@@ -856,6 +873,8 @@ function GlobalAssistantMessageItem({ text, thought }: { text: string; thought?:
           {thought}
         </div>
       )}
+
+      {toolCalls.length > 0 && <GenieToolCallsList toolCalls={toolCalls} />}
 
       <div className="group relative rounded-2xl bg-muted/60 border border-border/40 px-4 py-3 text-xs leading-relaxed text-foreground shadow-sm min-w-0">
         <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{text || 'Thinking...'}</div>

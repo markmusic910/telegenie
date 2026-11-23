@@ -8,6 +8,7 @@ import type {
   DialogParticipantInfo,
   DialogPeerKind,
 } from '../types/agent-message-record';
+import type { TabPageToolDescriptor } from '@telegenie/libs/types/tab-page.api';
 import type { AgentMessage, AgentRun, DialogMemorySync, DialogPreset, GenieSkill } from '../agent-db/agent-db.types';
 import type { ModelConfig } from '../agent/models';
 import type { AgentPreset } from '../preset/preset.types';
@@ -23,6 +24,24 @@ export interface ChatOptions {
 export interface ChatResult {
   text: string;
   thought?: string;
+}
+
+export interface InputCompletionRequest {
+  peerId: string;
+  currentInput: string;
+  replyToMessageId?: string;
+  editingMessageId?: string;
+  model?: string;
+  maxOptions?: number;
+}
+
+export interface InputCompletionOption {
+  text: string;
+  label?: string;
+}
+
+export interface InputCompletionResult {
+  options: InputCompletionOption[];
 }
 
 /**
@@ -150,6 +169,23 @@ export type AgentWorkerApi = {
    * the latest IndexedDB snapshot written by the Leader tab.
    */
   invalidateMemoryGraph: { args: []; result: void };
+
+  /**
+   * Replace the set of tab-page tool descriptors available to the agent.
+   */
+  setTabTools: {
+    args: [tools: TabPageToolDescriptor[]];
+    result: void;
+  };
+
+  /**
+   * Generate multiple contextual message completions for the active composer input
+   * (triggered on Tab in MessageComposer). Does not create an AgentRun in chat history.
+   */
+  completeInput: {
+    args: [request: InputCompletionRequest];
+    result: InputCompletionResult;
+  };
 };
 
 export type AgentWorkerEvents = {

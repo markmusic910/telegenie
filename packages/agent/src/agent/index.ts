@@ -14,5 +14,22 @@ export {
   understandNode,
   retrieveNode,
   generateNode,
+  toolsNode,
+  shouldContinueTools,
+  MAX_TOOL_ITERATIONS,
 } from './nodes';
-export { tools } from './tools';
+export {
+  tools,
+  BUILTIN_TOOL_GET_DIALOG_MEMORY_SYNC,
+  createGetDialogMemorySyncTool,
+  createTabProxyTool,
+  resolveAgentTools,
+  type FormattedDialogMemorySync,
+  type ResolvedAgentTools,
+  type ResolveAgentToolsOptions,
+} from './tools';
+export {
+  COMPOSER_TOOL_SUGGEST_INPUT_COMPLETIONS,
+  runInputCompletion,
+  type RunInputCompletionDeps,
+} from './input-completion';

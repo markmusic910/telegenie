@@ -5,7 +5,13 @@ import {
   type RpcHandlers,
   type WorkerLike,
 } from '@telegenie/libs/foundation/worker-rpc';
-import type { TabPageApi, UpdateUiStatePayload } from '@telegenie/libs/types/tab-page.api';
+import type {
+  TabPageApi,
+  TabPageToolCallEvent,
+  TabPageToolContext,
+  TabPageToolResult,
+  UpdateUiStatePayload,
+} from '@telegenie/libs/types/tab-page.api';
 import { AGENT_PAGE_BRIDGE_INIT } from '@telegenie/agent/worker';
 
 export type { TabPageApi, UpdateUiStatePayload };
@@ -17,17 +23,33 @@ export type TabPageOptions = {
   updateUiState: (payload: UpdateUiStatePayload) => void;
   /** Receive a streaming LLM token from the agent worker. */
   onStreamToken?: (runId: string, token: string) => void;
+  /** Execute a tab-registered tool invoked by the agent worker. */
+  onInvokeTool?: (
+    name: string,
+    args: Record<string, unknown>,
+    context: TabPageToolContext,
+  ) => Promise<TabPageToolResult>;
+  /** Receive a live tool-call lifecycle event from the agent worker. */
+  onToolCallEvent?: (event: TabPageToolCallEvent) => void;
 };
 
 /**
  * Tab-page side of the agent `agent-page` bridge: hosts {@link TabPageApi} over
  * worker-rpc so the per-tab Agent DedicatedWorker can call back into the page
- * (UI updates, Telegram via the tab’s SharedWorker client, etc.).
+ * (UI updates, Telegram via the tab’s SharedWorker client, tab-registered tools, etc.).
  */
 export class TabPage {
   private readonly telegramIsAuthorized: () => Promise<boolean>;
   private readonly updateUiState: (payload: UpdateUiStatePayload) => void;
   private readonly onStreamToken: ((runId: string, token: string) => void) | undefined;
+  private readonly onInvokeTool:
+    | ((
+        name: string,
+        args: Record<string, unknown>,
+        context: TabPageToolContext,
+      ) => Promise<TabPageToolResult>)
+    | undefined;
+  private readonly onToolCallEvent: ((event: TabPageToolCallEvent) => void) | undefined;
   private rpcHost: ExposedWorkerApi<Record<string, never>> | undefined;
   private bridgeCloser: (() => void) | undefined;
 
@@ -35,6 +57,8 @@ export class TabPage {
     this.telegramIsAuthorized = options.telegramIsAuthorized;
     this.updateUiState = options.updateUiState;
     this.onStreamToken = options.onStreamToken;
+    this.onInvokeTool = options.onInvokeTool;
+    this.onToolCallEvent = options.onToolCallEvent;
   }
 
   /**
@@ -84,6 +108,15 @@ export class TabPage {
       telegramIsAuthorized: async () => this.telegramIsAuthorized(),
       streamToken: async (runId, token) => {
         this.onStreamToken?.(runId, token);
+      },
+      invokeTool: async (name, args, context): Promise<TabPageToolResult> => {
+        if (!this.onInvokeTool) {
+          return { ok: false, error: `No tool dispatcher configured on tab for "${name}".` };
+        }
+        return this.onInvokeTool(name, args, context);
+      },
+      toolCallEvent: async (event) => {
+        this.onToolCallEvent?.(event);
       },
     };
   }

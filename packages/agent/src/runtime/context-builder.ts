@@ -1,11 +1,13 @@
 import type { Memory, Entity } from '../memory/db/memory-db.types';
 import type { DialogPreset, GenieSkill } from '../agent-db/agent-db.types';
-import type { AgentMessageRecord } from '../types/agent-message-record';
+import type { AgentMessageRecord, DialogMemoryContext } from '../types/agent-message-record';
 
 export type RetrievalContext = {
   memories: Memory[];
   messages: AgentMessageRecord[];
   entities: Entity[];
+  peerId?: string;
+  dialogContext?: DialogMemoryContext;
   dialogPreset?: DialogPreset;
   activeSkills?: GenieSkill[];
   userIdentity?: string;
@@ -55,6 +57,31 @@ export class ContextBuilder {
       parts.push('');
     }
 
+    const activePeerId = context.dialogContext?.peerId ?? context.peerId;
+    if (activePeerId) {
+      parts.push('## Active Dialog');
+      if (context.dialogContext?.peerName) {
+        parts.push(`- Name: ${context.dialogContext.peerName}`);
+      }
+      if (context.dialogContext?.peerType) {
+        parts.push(`- Type: ${context.dialogContext.peerType}`);
+      }
+      parts.push(`- Peer ID: ${activePeerId}`);
+      const participants = context.dialogContext?.peers
+        ? Object.values(context.dialogContext.peers)
+        : [];
+      if (participants.length > 0) {
+        const formatted = participants.map((p) => {
+          const label = p.name || p.id;
+          const handle = p.username ? ` (@${p.username})` : '';
+          const selfTag = p.isSelf ? ' [Me]' : '';
+          return `${label}${handle}${selfTag}`;
+        });
+        parts.push(`- Participants: ${formatted.join(', ')}`);
+      }
+      parts.push('');
+    }
+
     if (context.dialogPreset) {
       parts.push('## Dialog Background & User Directives');
       if (context.dialogPreset.background) {
@@ -96,11 +123,31 @@ export class ContextBuilder {
     }
 
     if (context.messages.length > 0) {
-      parts.push('\n## Relevant Messages');
-      for (const msg of context.messages.slice(0, 10)) {
+      const heading = activePeerId ? '\n## Recent & Relevant Dialog Messages' : '\n## Relevant Messages';
+      parts.push(heading);
+      const displayed = [...context.messages]
+        .slice(0, 25)
+        .sort((a, b) => a.date - b.date);
+      const peers = context.dialogContext?.peers;
+      for (const msg of displayed) {
         const date = new Date(msg.date * 1000).toLocaleString();
-        const sender = msg.out ? 'Me' : (msg.fromId ?? 'Them');
-        parts.push(`- [${date}] ${sender}: "${msg.message}"`);
+        let sender: string;
+        if (msg.out) {
+          sender = 'Me';
+        } else if (msg.fromId && peers?.[msg.fromId]) {
+          const p = peers[msg.fromId];
+          const label = p.name || msg.fromId;
+          sender = p.username ? `${label} (@${p.username})` : label;
+        } else {
+          sender = msg.fromId ?? 'Them';
+        }
+        const mediaTag = msg.media
+          ? `[${msg.media.type}${msg.media.fileName ? `: ${msg.media.fileName}` : ''}]`
+          : '';
+        const body = msg.message?.trim()
+          ? `"${msg.message.trim()}"${mediaTag ? ` ${mediaTag}` : ''}`
+          : mediaTag || '""';
+        parts.push(`- [${date}] ${sender}: ${body}`);
       }
     }
 

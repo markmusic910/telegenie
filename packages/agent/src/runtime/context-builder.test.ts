@@ -85,5 +85,57 @@ describe('ContextBuilder', () => {
     expect(output).toContain('### Skill: Meeting Summarizer');
     expect(output).toContain('Extract all action items and deadlines.');
   });
+
+  it('includes active dialog metadata and resolves participant names in messages chronologically', () => {
+    const context: RetrievalContext = {
+      memories: [],
+      entities: [],
+      peerId: '42',
+      dialogContext: {
+        peerId: '42',
+        peerName: 'y1',
+        peerType: 'user',
+        peers: {
+          '42': { id: '42', name: 'y1', username: 'y1_dev', type: 'user' },
+          '99': { id: '99', name: 'Mark', type: 'user', isSelf: true },
+        },
+      },
+      messages: [
+        {
+          id: '42:2',
+          peerId: '42',
+          fromId: '99',
+          date: 2000,
+          message: 'Sounds good, see you at 5!',
+          out: true,
+        },
+        {
+          id: '42:1',
+          peerId: '42',
+          fromId: '42',
+          date: 1000,
+          message: 'Want to grab coffee today?',
+          out: false,
+        },
+      ],
+    };
+
+    const output = builder.build(context);
+    expect(output).toContain('## Active Dialog');
+    expect(output).toContain('- Name: y1');
+    expect(output).toContain('- Type: user');
+    expect(output).toContain('- Peer ID: 42');
+    expect(output).toContain('y1 (@y1_dev)');
+    expect(output).toContain('Mark [Me]');
+    expect(output).toContain('## Recent & Relevant Dialog Messages');
+    expect(output).toContain('y1 (@y1_dev): "Want to grab coffee today?"');
+    expect(output).toContain('Me: "Sounds good, see you at 5!"');
+
+    // Earlier message appears before later message
+    const firstIdx = output.indexOf('Want to grab coffee today?');
+    const secondIdx = output.indexOf('Sounds good, see you at 5!');
+    expect(firstIdx).toBeGreaterThan(-1);
+    expect(secondIdx).toBeGreaterThan(firstIdx);
+  });
 });
 

@@ -100,10 +100,40 @@ export function useGenieRuntime({
 
         let accumulated = '';
         const tokenQueue: string[] = [];
+        const toolCallsMap = new Map<
+          string,
+          {
+            toolCallId: string;
+            toolName: string;
+            args: Record<string, unknown>;
+            argsText: string;
+            result?: unknown;
+            isError?: boolean;
+          }
+        >();
+        let toolDirty = false;
         let isDone = false;
         let resolveWait: (() => void) | null = null;
 
-        const unsubscribe = sdk.agent.onStreamToken((_runId, token) => {
+        const wake = () => {
+          if (resolveWait) {
+            resolveWait();
+            resolveWait = null;
+          }
+        };
+
+        const buildToolCallParts = () =>
+          Array.from(toolCallsMap.values()).map((tc) => ({
+            type: 'tool-call' as const,
+            toolCallId: tc.toolCallId,
+            toolName: tc.toolName,
+            args: tc.args as any,
+            argsText: tc.argsText,
+            ...(tc.result !== undefined ? { result: tc.result } : {}),
+            ...(tc.isError ? { isError: true } : {}),
+          }));
+
+        const unsubscribeTokens = sdk.agent.onStreamToken((_runId, token) => {
           let tokenStr = '';
           if (typeof token === 'string') {
             tokenStr = token;
@@ -118,11 +148,42 @@ export function useGenieRuntime({
 
           if (tokenStr) {
             tokenQueue.push(tokenStr);
-            if (resolveWait) {
-              resolveWait();
-              resolveWait = null;
-            }
+            wake();
           }
+        });
+
+        const unsubscribeTools = sdk.agent.onToolCallEvent((event) => {
+          const existing = toolCallsMap.get(event.toolCallId);
+          const args = event.args ?? existing?.args ?? {};
+          const argsText = existing?.argsText ?? JSON.stringify(args);
+          if (event.status === 'start') {
+            toolCallsMap.set(event.toolCallId, {
+              toolCallId: event.toolCallId,
+              toolName: event.toolName,
+              args,
+              argsText,
+            });
+          } else if (event.status === 'result') {
+            toolCallsMap.set(event.toolCallId, {
+              toolCallId: event.toolCallId,
+              toolName: event.toolName,
+              args,
+              argsText,
+              result: event.result ?? { ok: true },
+              isError: false,
+            });
+          } else if (event.status === 'error') {
+            toolCallsMap.set(event.toolCallId, {
+              toolCallId: event.toolCallId,
+              toolName: event.toolName,
+              args,
+              argsText,
+              result: event.error || 'Tool call failed',
+              isError: true,
+            });
+          }
+          toolDirty = true;
+          wake();
         });
 
         const chatPromise = sdk.agent
@@ -145,24 +206,26 @@ export function useGenieRuntime({
           })
           .finally(() => {
             isDone = true;
-            unsubscribe();
-            if (resolveWait) {
-              resolveWait();
-              resolveWait = null;
-            }
+            unsubscribeTokens();
+            unsubscribeTools();
+            wake();
             if (!isBYOK) {
               void sdk.auth.getBackendMe();
             }
             onRunCompletedRef.current?.();
           });
 
-        while (!isDone || tokenQueue.length > 0) {
-          if (tokenQueue.length > 0) {
+        while (!isDone || tokenQueue.length > 0 || toolDirty) {
+          if (tokenQueue.length > 0 || toolDirty) {
             while (tokenQueue.length > 0) {
               accumulated += tokenQueue.shift()!;
             }
+            toolDirty = false;
             yield {
-              content: [{ type: 'text', text: accumulated }],
+              content: [
+                ...buildToolCallParts(),
+                ...(accumulated ? [{ type: 'text' as const, text: accumulated }] : []),
+              ],
             };
           } else if (!isDone) {
             await new Promise<void>((resolve) => {
@@ -186,11 +249,11 @@ export function useGenieRuntime({
             : '';
         const finalText = accumulated || resultStr;
 
-        const contentParts: Array<{ type: 'text'; text: string } | { type: 'reasoning'; text: string }> = [];
-        if (thoughtStr) {
-          contentParts.push({ type: 'reasoning', text: thoughtStr });
-        }
-        contentParts.push({ type: 'text', text: finalText });
+        const contentParts: ChatModelRunResult['content'] = [
+          ...(thoughtStr ? [{ type: 'reasoning' as const, text: thoughtStr }] : []),
+          ...buildToolCallParts(),
+          { type: 'text' as const, text: finalText },
+        ];
 
         yield {
           content: contentParts,

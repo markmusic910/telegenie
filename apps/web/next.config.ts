@@ -10,6 +10,12 @@ const nextConfig: NextConfig = {
 
   // Experimental features for Cloudflare
   experimental: {},
+
+  turbopack: {
+    resolveAlias: {
+      '@grafeo-db/wasm': '@telegenie/agent/memory/db/grafeo-wasm-shim',
+    },
+  },
 };
 
 export default nextConfig;

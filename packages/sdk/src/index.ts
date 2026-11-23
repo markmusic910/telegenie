@@ -66,6 +66,11 @@ export {
   type SelectionMenuActions,
 } from './modules/message/can-message-actions';
 export { messageCopyText } from './modules/message/message-copy-text';
+export type {
+  CompleteInputOptions,
+  TabToolDefinition,
+  TabToolHandler,
+} from './modules/agent/agent.controller';
 export type { ToggleSelectionInput } from './modules/message/message-select.controller';
 export type {
   FocusMessageOptions,

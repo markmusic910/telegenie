@@ -26,14 +26,38 @@ import {
   type CustomEmojiEntity,
   type Document,
 } from '@telegenie/sdk';
+import type { InputCompletionOption } from '@telegenie/agent/worker';
 import { BellOff, Check, Clock, Forward, Pencil, Send, Smile, X } from 'lucide-react';
 import { observer } from 'mobx-react-lite';
-import { useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { z } from 'zod';
 import ComposerAttachMenu from './composer-attach.menu';
+import ComposerCompleteSuggest from './composer-complete.suggest';
 import ComposerEmojiMirror, { type ComposerEmojiSpan } from './composer-emoji.mirror';
 import EmojiSuggest from './emoji.suggest';
 import MessageStickerPicker from '../message.sticker-picker';
 import MediaSendDialog from '../media-send/media-send.dialog';
+
+const SUGGEST_INPUT_COMPLETIONS_TOOL = 'suggest_input_completions';
+
+const suggestInputCompletionsSchema = z.object({
+  suggestions: z
+    .array(
+      z.object({
+        text: z
+          .string()
+          .min(1)
+          .describe('The full suggested message text to place into the composer input.'),
+        label: z
+          .string()
+          .optional()
+          .describe('Short 1-2 word tone or style label, e.g. "Natural", "Concise", "Warm".'),
+      }),
+    )
+    .min(1)
+    .max(4)
+    .describe('3 to 4 distinct message completion options for the user to choose from.'),
+});
 
 function serverDraftKey(dialog: Dialog | null): string {
   const draft = dialog?.draft;
@@ -236,6 +260,14 @@ const MessageComposer = observer(function MessageComposer({ peerId }: MessageCom
   const [error, setError] = useState<string | null>(null);
   const [multiline, setMultiline] = useState(false);
   const [dismissedEmoji, setDismissedEmoji] = useState<string>();
+  const [completionOpen, setCompletionOpen] = useState(false);
+  const [completionLoading, setCompletionLoading] = useState(false);
+  const [completionOptions, setCompletionOptions] = useState<InputCompletionOption[]>([]);
+  const [completionSelectedIndex, setCompletionSelectedIndex] = useState(0);
+  const [completionError, setCompletionError] = useState<string | null>(null);
+  const completionRequestIdRef = useRef(0);
+  const peerIdRef = useRef(peerId);
+  peerIdRef.current = peerId;
   const sendingRef = useRef(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const mirrorRef = useRef<HTMLDivElement>(null);
@@ -274,6 +306,45 @@ const MessageComposer = observer(function MessageComposer({ peerId }: MessageCom
   const dismissSuggest = useStableCallback(() => {
     if (suggestEmoji) setDismissedEmoji(suggestEmoji);
   });
+
+  const dismissCompletion = useStableCallback(() => {
+    completionRequestIdRef.current += 1;
+    setCompletionOpen(false);
+    setCompletionLoading(false);
+    setCompletionOptions([]);
+    setCompletionSelectedIndex(0);
+    setCompletionError(null);
+  });
+
+  // Dismiss any open AI completion suggestions when switching dialogs
+  useEffect(() => {
+    dismissCompletion();
+  }, [peerId, dismissCompletion]);
+
+  // Register the composer-scoped tab tool so the agent worker can push multi-option
+  // completions directly to this composer when triggered via Tab.
+  useEffect(() => {
+    return sdk.agent.registerTool(
+      {
+        name: SUGGEST_INPUT_COMPLETIONS_TOOL,
+        description:
+          'Present 3 to 4 distinct message completion options above the Telegram message input box for the user to choose from.',
+        parameters: suggestInputCompletionsSchema,
+        scope: 'composer',
+      },
+      async ({ suggestions }, context) => {
+        if (context.peerId && context.peerId !== peerIdRef.current) {
+          return { delivered: false, reason: 'Active dialog changed' };
+        }
+        setCompletionOptions(suggestions);
+        setCompletionSelectedIndex(0);
+        setCompletionLoading(false);
+        setCompletionError(null);
+        setCompletionOpen(true);
+        return { delivered: true, count: suggestions.length };
+      },
+    );
+  }, [sdk.agent]);
   // Resting height matches the left-column nav bar (`h-16`) so the top borders line up.
   const stacked = Boolean(editingId || replyingToId || forwarding || error);
 
@@ -519,7 +590,98 @@ const MessageComposer = observer(function MessageComposer({ peerId }: MessageCom
     });
   });
 
+  const applyCompletionOption = useStableCallback((option: InputCompletionOption) => {
+    writeText(option.text);
+    dismissCompletion();
+    const caret = option.text.length;
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(caret, caret);
+    });
+  });
+
+  const triggerInputCompletion = useStableCallback(async () => {
+    if (disabled || sending || completionLoading) return;
+    const reqId = completionRequestIdRef.current + 1;
+    completionRequestIdRef.current = reqId;
+    setCompletionOpen(true);
+    setCompletionLoading(true);
+    setCompletionError(null);
+    setCompletionOptions([]);
+    setCompletionSelectedIndex(0);
+
+    try {
+      const result = await sdk.agent.completeInput({
+        peerId,
+        currentInput: text,
+        replyToMessageId: replyingToId,
+        editingMessageId: editingId,
+        maxOptions: 3,
+      });
+      if (completionRequestIdRef.current !== reqId) return;
+      if (result.options.length > 0) {
+        setCompletionOptions(result.options);
+        setCompletionSelectedIndex(0);
+      } else {
+        setCompletionError('No suggestions generated. Try typing a bit more context.');
+      }
+    } catch (err) {
+      if (completionRequestIdRef.current !== reqId) return;
+      setCompletionError((err as Error)?.message || 'Failed to generate suggestions.');
+    } finally {
+      if (completionRequestIdRef.current === reqId) {
+        setCompletionLoading(false);
+      }
+    }
+  });
+
   const onKeyDown = useStableCallback((event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (completionOpen) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        dismissCompletion();
+        return;
+      }
+      if (completionOptions.length > 0) {
+        if (event.key === 'ArrowDown') {
+          event.preventDefault();
+          setCompletionSelectedIndex((prev) => (prev + 1) % completionOptions.length);
+          return;
+        }
+        if (event.key === 'ArrowUp') {
+          event.preventDefault();
+          setCompletionSelectedIndex(
+            (prev) => (prev - 1 + completionOptions.length) % completionOptions.length,
+          );
+          return;
+        }
+        if (
+          (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) ||
+          (event.key === 'Tab' && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey)
+        ) {
+          event.preventDefault();
+          const chosen = completionOptions[completionSelectedIndex] ?? completionOptions[0];
+          if (chosen) applyCompletionOption(chosen);
+          return;
+        }
+      }
+    }
+
+    if (
+      event.key === 'Tab' &&
+      !event.shiftKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey &&
+      !event.nativeEvent.isComposing &&
+      !disabled &&
+      !sending
+    ) {
+      event.preventDefault();
+      void triggerInputCompletion();
+      return;
+    }
+
     if (event.key === 'Escape' && editingId) {
       event.preventDefault();
       sdk.messageDraft.cancelEditing(peerId);
@@ -557,8 +719,18 @@ const MessageComposer = observer(function MessageComposer({ peerId }: MessageCom
         />
       ) : null}
       <TooltipProvider>
-        <Field className={cn('relative w-full gap-1', showSuggest && 'z-20')}>
-          {showSuggest && suggestEmoji ? (
+        <Field className={cn('relative w-full gap-1', (showSuggest || completionOpen) && 'z-20')}>
+          {completionOpen ? (
+            <ComposerCompleteSuggest
+              loading={completionLoading}
+              options={completionOptions}
+              selectedIndex={completionSelectedIndex}
+              error={completionError}
+              onSelect={applyCompletionOption}
+              onHover={setCompletionSelectedIndex}
+              onDismiss={dismissCompletion}
+            />
+          ) : showSuggest && suggestEmoji ? (
             <EmojiSuggest
               emoji={suggestEmoji}
               canSendStickers={canSendStickers}
@@ -610,6 +782,7 @@ const MessageComposer = observer(function MessageComposer({ peerId }: MessageCom
                 )}
                 onChange={(event) => {
                   writeText(event.target.value);
+                  if (completionOpen) dismissCompletion();
                   if (error) setError(null);
                 }}
                 onScroll={syncMirrorScroll}

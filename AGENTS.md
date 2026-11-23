@@ -144,6 +144,6 @@ TeleGenie uses five browser contexts. Do not collapse them or invent another wit
   - On agent worker startup (`cleanupAgentDb`), `agent_runs` older than 30 days are hard-deleted along with orphaned `agent_messages`, `tool_calls`, and `agent_checkpoints`.
   - Permanent user settings (`dialog_presets`), `dialog_memory_syncs`, and `telegenie-memory-graph` records are **never hard-pruned** automatically during cleanup.
 - **API Responsibility Boundary**:
-  - `AgentWorkerApi`: Data transfer (Telegram message records, chat prompts, model config).
-  - `TabPageApi`: UI updates only (token streaming via `streamToken`, UI status flags).
+  - `AgentWorkerApi`: Data transfer (Telegram message records, chat prompts, model config, tab tool descriptors via `setTabTools`, and composer input completion via `completeInput`).
+  - `TabPageApi`: UI updates, token/tool-call streaming (`streamToken`, `toolCallEvent`), and tab-registered tool execution (`invokeTool`).
 

@@ -11,6 +11,9 @@ export type {
   DialogPeerKind,
   ChatOptions,
   ChatResult,
+  InputCompletionRequest,
+  InputCompletionOption,
+  InputCompletionResult,
 } from './agent.api';
 export type {
   DialogPreset,
@@ -23,7 +26,6 @@ export type {
 export type { ProcessMessagesResult } from '../memory/engine/memory-engine';
 export type { ModelConfig, ProviderApiKeys, LLMProvider } from '../agent/models';
 export type { AgentPreset } from '../preset/preset.types';
-export { createAgentWorkerHandlers } from './agent.handlers';
 export {
   createAgentWorkerClient,
   type AgentWorkerClient,

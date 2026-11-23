@@ -7,7 +7,10 @@ import type {
   DialogMemoryContext,
   DialogMemorySync,
   DialogParticipantInfo,
+  InputCompletionRequest,
+  InputCompletionResult,
 } from '@telegenie/agent/worker';
+import { z } from 'zod';
 import { createLazyAgentWorkerClient, type AgentWorkerClient } from '@telegenie/agent/worker';
 import { createDefaultAgentWorker } from '@telegenie/agent/worker/create-default-agent-worker';
 import {
@@ -31,7 +34,14 @@ import type {
   TypeMessageReplyHeader,
 } from '@telegenie/libs/foundation/telegram/types/api-types';
 import type { LoadHistoryOptions } from '@telegenie/libs/foundation/telegram/worker';
-import type { UpdateUiStatePayload } from '@telegenie/libs/types/tab-page.api';
+import type {
+  TabPageToolCallEvent,
+  TabPageToolContext,
+  TabPageToolDescriptor,
+  TabPageToolResult,
+  TabPageToolScope,
+  UpdateUiStatePayload,
+} from '@telegenie/libs/types/tab-page.api';
 import type GlobalStore from '../../store/global/global.store';
 import type StoreManager from '../../store/store.manager';
 import type { MessageEntity, MessageStore } from '../../store/types';
@@ -89,8 +99,38 @@ export type AgentControllerOptions = {
   storeManager?: StoreManager;
   /** Load history function to fetch older/newer messages for memory extraction. */
   loadHistory?: (peerId: string, opts: LoadHistoryOptions) => Promise<AgentControllerLoadHistoryResult>;
+  /** SDK cache IndexedDB reader to retrieve all persisted messages for a peer. */
+  loadCachedMessagesByPeer?: (peerId: string) => Promise<MessageEntity[]>;
   /** Message store getter to retrieve locally cached messages. */
   ensureMessageStore?: (peerId: string) => MessageStore;
+};
+
+export type TabToolDefinition<TSchema extends z.ZodType = z.ZodType> = {
+  name: string;
+  description: string;
+  parameters: TSchema;
+  /** Controls which agent flows expose this tool. Defaults to `'chat'`. */
+  scope?: TabPageToolScope;
+};
+
+export type TabToolHandler<TArgs = Record<string, unknown>> = (
+  args: TArgs,
+  context: TabPageToolContext,
+) => unknown | Promise<unknown>;
+
+export type CompleteInputOptions = {
+  peerId: string;
+  currentInput: string;
+  replyToMessageId?: string;
+  editingMessageId?: string;
+  model?: string;
+  maxOptions?: number;
+};
+
+type RegisteredTabToolEntry = {
+  descriptor: TabPageToolDescriptor;
+  schema: z.ZodType;
+  handler: TabToolHandler<unknown>;
 };
 
 export const INCREMENTAL_SYNC_BATCH_SIZE = 50;
@@ -110,9 +150,13 @@ export class AgentController {
   private readonly globalStore?: GlobalStore;
   private readonly storeManager?: StoreManager;
   private readonly loadHistory?: (peerId: string, opts: LoadHistoryOptions) => Promise<AgentControllerLoadHistoryResult>;
+  private readonly loadCachedMessagesByPeer?: (peerId: string) => Promise<MessageEntity[]>;
   private readonly ensureMessageStore?: (peerId: string) => MessageStore;
 
   private readonly streamTokenListeners = new Set<(runId: string, token: string) => void>();
+  private readonly toolCallEventListeners = new Set<(event: TabPageToolCallEvent) => void>();
+  private readonly registeredTools = new Map<string, RegisteredTabToolEntry>();
+  private bridgeConnected = false;
   private readonly activeSyncs = new Map<string, { status: 'syncing' | 'completed' | 'failed'; processed: number }>();
   private readonly syncProgressListeners = new Set<(payload: TabMemorySyncProgressPayload) => void>();
   private readonly syncCompleteListeners = new Set<(payload: TabMemorySyncCompletePayload) => void>();
@@ -143,6 +187,7 @@ export class AgentController {
     this.globalStore = options.globalStore;
     this.storeManager = options.storeManager;
     this.loadHistory = options.loadHistory;
+    this.loadCachedMessagesByPeer = options.loadCachedMessagesByPeer;
     this.ensureMessageStore = options.ensureMessageStore;
 
     if (this.broadcast) {
@@ -189,6 +234,18 @@ export class AgentController {
           listener(runId, token);
         }
       },
+      onInvokeTool: async (name, rawArgs, context) => {
+        return this.invokeRegisteredTool(name, rawArgs, context);
+      },
+      onToolCallEvent: (event) => {
+        for (const listener of this.toolCallEventListeners) {
+          try {
+            listener(event);
+          } catch (err) {
+            console.error('[AgentController] Error in toolCallEvent listener:', err);
+          }
+        }
+      },
     });
   }
 
@@ -204,6 +261,109 @@ export class AgentController {
   }
 
   /**
+   * Subscribe to live tool-call lifecycle events (`start` / `result` / `error`) pushed from the agent worker.
+   */
+  @Method()
+  onToolCallEvent(listener: (event: TabPageToolCallEvent) => void): () => void {
+    this.toolCallEventListeners.add(listener);
+    return () => {
+      this.toolCallEventListeners.delete(listener);
+    };
+  }
+
+  /**
+   * Register a tab-page tool with a Zod v4 schema and handler.
+   * Serializes the schema to JSON Schema and syncs descriptors to the agent worker.
+   * Returns an idempotent unregister function suitable for React `useEffect` cleanup.
+   */
+  @Method()
+  registerTool<TSchema extends z.ZodType>(
+    definition: TabToolDefinition<TSchema>,
+    handler: TabToolHandler<z.infer<TSchema>>,
+  ): () => void {
+    const name = definition.name.trim();
+    if (!name) {
+      throw new Error('Tool name must be a non-empty string.');
+    }
+
+    const jsonSchema = z.toJSONSchema(definition.parameters) as Record<string, unknown>;
+    const descriptor: TabPageToolDescriptor = {
+      name,
+      description: definition.description,
+      parameters: jsonSchema,
+      ...(definition.scope ? { scope: definition.scope } : {}),
+    };
+
+    const entry: RegisteredTabToolEntry = {
+      descriptor,
+      schema: definition.parameters,
+      handler: handler as TabToolHandler<unknown>,
+    };
+    this.registeredTools.set(name, entry);
+
+    if (this.bridgeConnected) {
+      void this.syncTabTools().catch((err) => {
+        console.warn(`[AgentController] Failed to sync tab tools after registering "${name}":`, err);
+      });
+    }
+
+    return () => {
+      // Only remove if this exact registration is still active (React StrictMode safe)
+      if (this.registeredTools.get(name) === entry) {
+        this.registeredTools.delete(name);
+        if (this.bridgeConnected) {
+          void this.syncTabTools().catch(() => {});
+        }
+      }
+    };
+  }
+
+  /**
+   * Unregister a previously registered tab-page tool by name and sync to the agent worker.
+   */
+  @Method()
+  unregisterTool(name: string): void {
+    if (!this.registeredTools.delete(name)) return;
+    if (this.bridgeConnected) {
+      void this.syncTabTools().catch(() => {});
+    }
+  }
+
+  private readonly syncTabTools = async (): Promise<void> => {
+    const descriptors = Array.from(this.registeredTools.values()).map((entry) => entry.descriptor);
+    await this.worker.call('setTabTools', [descriptors]);
+  };
+
+  private readonly invokeRegisteredTool = async (
+    name: string,
+    rawArgs: Record<string, unknown>,
+    context: TabPageToolContext,
+  ): Promise<TabPageToolResult> => {
+    const entry = this.registeredTools.get(name);
+    if (!entry) {
+      return { ok: false, error: `Tool "${name}" is not registered on this tab.` };
+    }
+
+    const parsed = entry.schema.safeParse(rawArgs ?? {});
+    if (!parsed.success) {
+      return {
+        ok: false,
+        error: `Invalid arguments for tool "${name}": ${parsed.error.message}`,
+      };
+    }
+
+    try {
+      const result = await entry.handler(parsed.data, context);
+      return { ok: true, result };
+    } catch (err) {
+      return {
+        ok: false,
+        error: (err as Error)?.message || `Tool "${name}" execution failed.`,
+      };
+    }
+  };
+
+  /**
    * Spawn the agent worker (if needed) and expose TabPageApi over an
    * `agent-page` MessageChannel so the worker can call back into this tab.
    */
@@ -213,11 +373,16 @@ export class AgentController {
     // Force lazy client to construct the DedicatedWorker, then transfer the page port.
     const agentWorker = this.worker.worker;
     this.tabPage.connect(agentWorker);
+    this.bridgeConnected = true;
+    if (this.registeredTools.size > 0) {
+      await this.syncTabTools();
+    }
   }
 
   @RequestLog()
   @Method()
   disconnectPageBridge(): void {
+    this.bridgeConnected = false;
     this.tabPage.disconnect();
     for (const timer of this.incrementalTimers.values()) {
       clearTimeout(timer);
@@ -251,6 +416,31 @@ export class AgentController {
     options?: string | import('@telegenie/agent/worker').ChatOptions,
   ): Promise<import('@telegenie/agent/worker').ChatResult> {
     return this.worker.call('chat', [userMessage, options]);
+  }
+
+  /**
+   * Request multiple contextual message completions for the active composer input
+   * (triggered on Tab in MessageComposer). Context (recent messages, reply-to/editing
+   * messages, dialog participants, preset, and memories) is assembled inside the agent worker.
+   */
+  @RequestLog()
+  @Method()
+  async completeInput(options: CompleteInputOptions): Promise<InputCompletionResult> {
+    await this.ensureModelConfigured();
+    if (this.bridgeConnected && this.registeredTools.size > 0) {
+      await this.syncTabTools();
+    }
+
+    const request: InputCompletionRequest = {
+      peerId: options.peerId,
+      currentInput: options.currentInput,
+      model: options.model ?? this.getSelectedModel(),
+      ...(options.replyToMessageId ? { replyToMessageId: options.replyToMessageId } : {}),
+      ...(options.editingMessageId ? { editingMessageId: options.editingMessageId } : {}),
+      ...(options.maxOptions ? { maxOptions: options.maxOptions } : {}),
+    };
+
+    return this.worker.call('completeInput', [request]);
   }
 
   /**
@@ -620,21 +810,27 @@ export class AgentController {
         { peerId, status: 'syncing', fromDate, toDate },
       ]);
 
-      // 1. Local-first: collect cached messages in [fromDate, toDate]
+      // 1. Local-first: collect cached messages in [fromDate, toDate] directly from IndexedDB
       const collectedMessages = new Map<number, AgentMessageRecord>();
-      const messageStore = this.ensureMessageStore?.(peerId);
+      const cachedMessages = (await this.loadCachedMessagesByPeer?.(peerId)) ?? [];
+      const cachedMessageById = new Map<string, MessageEntity>();
+      for (const msg of cachedMessages) {
+        if (msg?.id != null) {
+          cachedMessageById.set(String(msg.id), msg);
+        }
+      }
+      const replyLookupStore = {
+        get: (id: string) => cachedMessageById.get(id),
+      } as unknown as MessageStore;
 
-      if (messageStore) {
-        const allData = messageStore.getAllData();
-        for (const [idStr, msg] of allData) {
-          const numId = Number(idStr);
-          if (!numId || !msg || msg.isEmpty) continue;
-          const record = this.toAgentMessageRecord(peerId, msg, messageStore);
-          if (!record.message?.trim() && !record.media?.summary?.trim()) continue;
-          const msgDateMs = (msg.date ?? 0) * 1000;
-          if (msgDateMs >= fromDate && msgDateMs <= toDate) {
-            collectedMessages.set(numId, record);
-          }
+      for (const msg of cachedMessages) {
+        const numId = Number(msg?.id);
+        if (!numId || !msg || msg.isEmpty) continue;
+        const record = this.toAgentMessageRecord(peerId, msg, replyLookupStore);
+        if (!record.message?.trim() && !record.media?.summary?.trim()) continue;
+        const msgDateMs = (msg.date ?? 0) * 1000;
+        if (msgDateMs >= fromDate && msgDateMs <= toDate) {
+          collectedMessages.set(numId, record);
         }
       }
 
@@ -682,14 +878,11 @@ export class AgentController {
             if (msgDateMs < fromDate) {
               reachedStart = true;
             } else if (msgDateMs <= toDate) {
-              const storedMsg =
-                typeof messageStore?.get === 'function'
-                  ? messageStore.get(String(numId))
-                  : undefined;
+              const storedMsg = cachedMessageById.get(String(numId));
               const record = this.toAgentMessageRecord(
                 peerId,
                 storedMsg ?? rawMsg,
-                messageStore,
+                replyLookupStore,
               );
               if (record.message?.trim() || record.media?.summary?.trim()) {
                 collectedMessages.set(numId, record);

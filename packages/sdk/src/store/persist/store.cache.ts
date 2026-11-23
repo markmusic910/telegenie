@@ -118,9 +118,11 @@ export class StoreCache {
       for (const entity of store.getAllData().values()) {
         if (!entity?.id) continue;
         const plain = toJS(entity) as MessageEntity;
+        const resolvedPeerId = plain.peerId || peerId;
         const row: CachedMessageRow = {
           ...plain,
-          cacheKey: messageCacheKey(plain.peerId || peerId, String(plain.id)),
+          peerId: resolvedPeerId,
+          cacheKey: messageCacheKey(resolvedPeerId, String(plain.id)),
         };
         void this.idb.putQueued(SDK_CACHE_STORE.message, row);
       }
@@ -189,6 +191,17 @@ export class StoreCache {
   async loadMessages(): Promise<CachedMessageRow[]> {
     if (!this.opened) return [];
     return this.idb.getAll<CachedMessageRow>(SDK_CACHE_STORE.message);
+  }
+
+  /** Load all cached messages for a peer via the `peerId` index. */
+  async loadMessagesByPeer(peerId: string): Promise<MessageEntity[]> {
+    if (!this.opened || !peerId) return [];
+    const rows = await this.idb.getAllByIndex<CachedMessageRow>(
+      SDK_CACHE_STORE.message,
+      'peerId',
+      peerId,
+    );
+    return rows.map(({ cacheKey: _cacheKey, ...entity }) => entity);
   }
 
   /** Point reads for listed / reply ids after the in-memory store has evicted them. */
@@ -302,9 +315,11 @@ export class StoreCache {
     if (!this.canWrite()) return;
     if (change.type === 'put') {
       for (const entity of change.entities) {
+        const resolvedPeerId = entity.peerId || peerId;
         const row: CachedMessageRow = {
           ...entity,
-          cacheKey: messageCacheKey(entity.peerId || peerId, String(entity.id)),
+          peerId: resolvedPeerId,
+          cacheKey: messageCacheKey(resolvedPeerId, String(entity.id)),
         };
         void this.idb.putQueued(SDK_CACHE_STORE.message, row);
       }

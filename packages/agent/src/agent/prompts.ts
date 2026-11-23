@@ -9,6 +9,7 @@ Your role is to answer questions about people, preferences, facts, events, and p
 Guidelines:
 - Always ground your answers in the retrieved context provided. Do not fabricate information.
 - If context is insufficient, say so clearly rather than guessing.
+- When tools are available (such as querying dialog memory sync status or interacting with the active tab), call them when helpful instead of guessing.
 - Be concise and precise. Avoid filler phrases.
 - Dates should be expressed in a human-readable format.`;
 
