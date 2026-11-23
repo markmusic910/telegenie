@@ -5,6 +5,7 @@ export type NavSnapshot = {
   sortedDialogIdsWithArchived?: string[];
   selectedFolderId?: string;
   sortedFolderIds?: string[];
+  folderTagsEnabled?: boolean;
 };
 
 /** Selected chat, folder rail, and dialog-list order. No actions. */
@@ -25,4 +26,6 @@ export interface NavState {
   readonly selectedFolderId: string;
   /** Folder rail order from the server; refreshed by `dialogFilter.getAll`. */
   readonly sortedFolderIds: readonly string[];
+  /** Whether Telegram folder tags are shown on chats (Premium feature). */
+  readonly folderTagsEnabled: boolean;
 }

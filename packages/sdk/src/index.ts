@@ -28,11 +28,13 @@ export type {
 export {
   GET_HISTORY_LIMIT,
   GET_MESSAGES_FILL_LIMIT,
+  type SaveFolderFilterInput,
 } from '@telegenie/libs/foundation/telegram/worker';
 export { IS_SERVICE_WORKER_SUPPORTED, SERVICE_NOTIFICATIONS_USER_ID } from './consts';
 export {
   ALL_CHATS_FOLDER_ID,
   DEFAULT_FOLDER_IDS,
+  MAX_FOLDER_TITLE_LENGTH,
 } from './modules/dialog-filter/dialog-filter.constants';
 export {
   ARCHIVE_FOLDER_ID,

@@ -32,6 +32,9 @@ export class NavSlice extends GlobalStoreSlice implements NavState {
   /** Folder rail order from the server; refreshed by `dialogFilter.getAll`. */
   sortedFolderIds: string[] = [];
 
+  /** Whether Telegram folder tags are shown on chats (Premium feature). */
+  folderTagsEnabled: boolean = false;
+
   private readonly globalStore: GlobalStore;
 
   constructor(globalStore: GlobalStore) {
@@ -71,6 +74,10 @@ export class NavSlice extends GlobalStoreSlice implements NavState {
     this.sortedFolderIds = ids;
   };
 
+  setFolderTagsEnabled = (enabled: boolean) => {
+    this.folderTagsEnabled = enabled;
+  };
+
   hydrateFromSnapshot = (snapshot: Record<string, unknown> | undefined) => {
     if (!snapshot) return;
     if (typeof snapshot.selectedDialogId === 'string') {
@@ -93,6 +100,9 @@ export class NavSlice extends GlobalStoreSlice implements NavState {
     if (sortedFolderIds) {
       this.sortedFolderIds = sortedFolderIds;
     }
+    if (typeof snapshot.folderTagsEnabled === 'boolean') {
+      this.folderTagsEnabled = snapshot.folderTagsEnabled;
+    }
   };
 
   toSnapshot(): NavSnapshot {
@@ -102,6 +112,7 @@ export class NavSlice extends GlobalStoreSlice implements NavState {
       sortedDialogIdsWithArchived: toJS(this.sortedDialogIdsWithArchived),
       selectedFolderId: this.selectedFolderId,
       sortedFolderIds: toJS(this.sortedFolderIds),
+      folderTagsEnabled: this.folderTagsEnabled,
     };
   }
 

@@ -11,6 +11,7 @@ export {
   type DialogBatch,
   type DialogFilterBatch,
   type FolderFilter,
+  type SaveFolderFilterInput,
   type FileDownloadItem,
   type FilePeerPhotoItem,
   type FileDownloadResult,

@@ -24,6 +24,7 @@ function serverFilter(id: number, overrides: Partial<FolderFilter> = {}): Folder
 function createModule(
   getAll: FolderFilter[] = [],
   order: number[] = getAll.map((f) => f.id),
+  tagsEnabled?: boolean,
 ) {
   const sm = new StoreManager();
   sm.set(
@@ -36,7 +37,7 @@ function createModule(
   );
   const globalStore = new GlobalStore();
   const call = jest.fn().mockImplementation(async (method: string) => {
-    if (method === 'dialogFilter.getAll') return { filters: getAll, order };
+    if (method === 'dialogFilter.getAll') return { filters: getAll, order, tagsEnabled };
     return undefined;
   });
   const worker = { call } as unknown as TelegramWorkerClient;
@@ -201,5 +202,104 @@ describe('DialogFilterController.selectFolder', () => {
     module.selectFolder('4');
 
     expect(globalStore.nav.selectedFolderId).toBe('4');
+  });
+});
+
+describe('DialogFilterController.create / update / delete / setTagsEnabled', () => {
+  it('syncs folderTagsEnabled from getAll', async () => {
+    const { module, globalStore } = createModule([serverFilter(0)], [0], true);
+    module.seedDefaults();
+    await module.getAll();
+
+    expect(globalStore.nav.folderTagsEnabled).toBe(true);
+  });
+
+  it('allocates the smallest unused id >= 2 on create and appends to rail', async () => {
+    const { module, sm, globalStore, call } = createModule(
+      [serverFilter(0), serverFilter(2), serverFilter(4)],
+      [0, 2, 4],
+    );
+    module.seedDefaults();
+    await module.getAll();
+
+    const created = await module.create({
+      title: 'Work',
+      emoticon: '💼',
+      color: 5,
+      groups: true,
+      pinnedPeerIds: [],
+      includePeerIds: ['100'],
+      excludePeerIds: [],
+    });
+
+    expect(created.folderId).toBe(3);
+    expect(created.id).toBe('3');
+    expect(call).toHaveBeenLastCalledWith('dialogFilter.save', [
+      expect.objectContaining({ id: 3, title: 'Work', emoticon: '💼', color: 5, groups: true }),
+    ]);
+    expect(sm.get('dialogFilter').getAllData().get('3')?.title).toBe('Work');
+    expect(globalStore.nav.sortedFolderIds).toEqual([ALL_CHATS_FOLDER_ID, '2', '4', '3']);
+  });
+
+  it('updates an existing custom folder and rejects editing All Chats', async () => {
+    const { module, sm, call } = createModule([serverFilter(0), serverFilter(2)], [0, 2]);
+    module.seedDefaults();
+    await module.getAll();
+
+    await module.update({
+      id: 2,
+      title: 'Renamed',
+      pinnedPeerIds: [],
+      includePeerIds: ['55'],
+      excludePeerIds: [],
+    });
+
+    expect(call).toHaveBeenLastCalledWith('dialogFilter.save', [
+      expect.objectContaining({ id: 2, title: 'Renamed', includePeerIds: ['55'] }),
+    ]);
+    expect(sm.get('dialogFilter').getAllData().get('2')?.title).toBe('Renamed');
+
+    const bad = await module.update({
+      id: 0,
+      title: 'Nope',
+      pinnedPeerIds: [],
+      includePeerIds: [],
+      excludePeerIds: [],
+    });
+    expect(bad).toMatchObject({ success: false });
+  });
+
+  it('deletes a custom folder and resets selection if active', async () => {
+    const { module, sm, globalStore, call } = createModule(
+      [serverFilter(0), serverFilter(2)],
+      [0, 2],
+    );
+    module.seedDefaults();
+    await module.getAll();
+    module.selectFolder('2');
+
+    await module.delete('2');
+
+    expect(call).toHaveBeenLastCalledWith('dialogFilter.delete', [2]);
+    expect(sm.get('dialogFilter').getAllData().has('2')).toBe(false);
+    expect(globalStore.nav.sortedFolderIds).toEqual([ALL_CHATS_FOLDER_ID]);
+    expect(globalStore.nav.selectedFolderId).toBe(ALL_CHATS_FOLDER_ID);
+  });
+
+  it('toggles folder tags optimistically and reverts on RPC error', async () => {
+    const { module, globalStore, call } = createModule([serverFilter(0)], [0], false);
+    module.seedDefaults();
+
+    await module.setTagsEnabled(true);
+    expect(call).toHaveBeenLastCalledWith('dialogFilter.toggleTags', [true]);
+    expect(globalStore.nav.folderTagsEnabled).toBe(true);
+
+    call.mockRejectedValueOnce(new Error('PREMIUM_ACCOUNT_REQUIRED'));
+    const result = await module.setTagsEnabled(false);
+    expect(result).toMatchObject({
+      success: false,
+      error: { code: 'CONTROLLER_ERROR', message: 'PREMIUM_ACCOUNT_REQUIRED' },
+    });
+    expect(globalStore.nav.folderTagsEnabled).toBe(true);
   });
 });

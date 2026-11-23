@@ -40,14 +40,16 @@ type StickerSection = {
 };
 
 export interface MessageStickerPickerProps {
-  peerId: string;
-  canSendStickers: boolean;
-  canSendGifs: boolean;
-  sending: boolean;
+  peerId?: string;
+  canSendStickers?: boolean;
+  canSendGifs?: boolean;
+  sending?: boolean;
+  /** Hide Stickers/GIFs tabs and use a compact height for emoji-only pickers (e.g. folder names). */
+  emojiOnly?: boolean;
   onInsertEmoji: (emoji: string) => void;
   onInsertCustomEmoji: (document: Document, alt: string) => void;
-  onSendSticker: (document: SendStickerDocument) => void;
-  onSendGifResult: (queryId: string, resultId: string) => void;
+  onSendSticker?: (document: SendStickerDocument) => void;
+  onSendGifResult?: (queryId: string, resultId: string) => void;
 }
 
 function stickerEmoji(document: Document): string | undefined {
@@ -475,14 +477,15 @@ function CustomEmojiGrid({
 }
 
 export default function MessageStickerPicker({
-  peerId,
-  canSendStickers,
-  canSendGifs,
-  sending,
+  peerId = '',
+  canSendStickers = false,
+  canSendGifs = false,
+  sending = false,
+  emojiOnly = false,
   onInsertEmoji,
   onInsertCustomEmoji,
-  onSendSticker,
-  onSendGifResult,
+  onSendSticker = () => undefined,
+  onSendGifResult = () => undefined,
 }: MessageStickerPickerProps) {
   const sdk = useSDK();
   const [tab, setTab] = useState<PickerTab>('emoji');
@@ -776,13 +779,17 @@ export default function MessageStickerPicker({
     <Tabs
       value={tab}
       onValueChange={(value) => {
+        if (emojiOnly) return;
         if (value !== 'emoji' && value !== 'stickers' && value !== 'gifs') return;
         setTab(value);
         setQuery('');
         setDebounced('');
         setSelectedSetId(undefined);
       }}
-      className="flex h-[36rem] w-[24rem] min-w-0 flex-col gap-0 overflow-hidden"
+      className={cn(
+        'flex w-[24rem] min-w-0 flex-col gap-0 overflow-hidden',
+        emojiOnly ? 'h-[24rem]' : 'h-[36rem]',
+      )}
     >
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 px-3 pt-3">
         {tab === 'gifs' ? null : (
@@ -966,17 +973,19 @@ export default function MessageStickerPicker({
           </TabsPanel>
         </div>
       </div>
-      <TabsList className="mx-3 mt-2 mb-3 self-center">
-        <TabsTab className="h-7 px-2 text-xs sm:h-7 sm:text-xs" value="emoji">
-          Emoji
-        </TabsTab>
-        <TabsTab className="h-7 px-2 text-xs sm:h-7 sm:text-xs" value="stickers">
-          Stickers
-        </TabsTab>
-        <TabsTab className="h-7 px-2 text-xs sm:h-7 sm:text-xs" value="gifs">
-          GIFs
-        </TabsTab>
-      </TabsList>
+      {emojiOnly ? null : (
+        <TabsList className="mx-3 mt-2 mb-3 self-center">
+          <TabsTab className="h-7 px-2 text-xs sm:h-7 sm:text-xs" value="emoji">
+            Emoji
+          </TabsTab>
+          <TabsTab className="h-7 px-2 text-xs sm:h-7 sm:text-xs" value="stickers">
+            Stickers
+          </TabsTab>
+          <TabsTab className="h-7 px-2 text-xs sm:h-7 sm:text-xs" value="gifs">
+            GIFs
+          </TabsTab>
+        </TabsList>
+      )}
       <AlertDialog open={confirmClear} onOpenChange={setConfirmClear}>
         <AlertDialogPopup>
           <AlertDialogHeader>

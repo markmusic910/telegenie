@@ -14,7 +14,10 @@ import type {
   StickerSetContents,
 } from '../services/sticker.service';
 import type { Document } from '../types/file';
-import type { DialogFilterBatch } from '../services/converters/dialog-filter.converter';
+import type {
+  DialogFilterBatch,
+  SaveFolderFilterInput,
+} from '../services/converters/dialog-filter.converter';
 import type { ApiChatReactions } from '../types';
 import type { TelegramOpenAccountOptions } from '../telegram';
 import type {
@@ -224,6 +227,12 @@ export type TelegramWorkerApi = {
   'dialogFilter.getAll': { args: []; result: DialogFilterBatch };
   /** Folder order (`messages.updateDialogFiltersOrder`); ids are server folder ids. */
   'dialogFilter.reorder': { args: [order: number[]]; result: void };
+  /** Create or update a chat folder (`messages.updateDialogFilter`). */
+  'dialogFilter.save': { args: [filter: SaveFolderFilterInput]; result: void };
+  /** Delete a custom chat folder (`messages.updateDialogFilter` with no filter). */
+  'dialogFilter.delete': { args: [id: number]; result: void };
+  /** Toggle folder tags in the chat list (`messages.toggleDialogFilterTags`). */
+  'dialogFilter.toggleTags': { args: [enabled: boolean]; result: void };
 
   'chat.getChatsByIds': { args: [ids: string[]]; result: Record<string, Chat> };
   'chat.getFullChatByIds': { args: [ids: string[]]; result: FullChatBundle };
@@ -576,6 +585,7 @@ export type TelegramWorkerEvents = {
 export type {
   DialogFilterBatch,
   FolderFilter,
+  SaveFolderFilterInput,
 } from '../services/converters/dialog-filter.converter';
 export type { DialogOrderPayload, StoreSyncPayload } from './store-sync';
 

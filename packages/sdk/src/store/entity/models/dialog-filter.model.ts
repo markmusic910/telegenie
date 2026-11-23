@@ -1,3 +1,4 @@
+import type { CustomEmojiEntity } from '@telegenie/libs/foundation/telegram/services/message.service';
 import { toJS } from 'mobx';
 import type { DialogFilterEntity } from '../../types';
 import { stringifyJson } from '../../utils/json';
@@ -9,6 +10,8 @@ import BaseEntityModel, { makeModelObservable } from './base.model';
 export class DialogFilterModel extends BaseEntityModel<DialogFilterEntity> {
   folderId: number;
   title: string;
+  titleEntities?: CustomEmojiEntity[];
+  titleNoanimate?: boolean;
   emoticon?: string;
   color?: number;
   isDefault: boolean;
@@ -30,6 +33,8 @@ export class DialogFilterModel extends BaseEntityModel<DialogFilterEntity> {
     super(data);
     this.folderId = data.folderId ?? 0;
     this.title = data.title ?? '';
+    this.titleEntities = data.titleEntities;
+    this.titleNoanimate = data.titleNoanimate;
     this.emoticon = data.emoticon;
     this.color = data.color;
     this.isDefault = data.isDefault ?? false;

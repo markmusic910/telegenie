@@ -1,15 +1,5 @@
 'use client';
 
-import { ALL_CHATS_FOLDER_ID, isUnreadFolder, type DialogFilterEntity } from '@telegenie/sdk';
-import {
-  Bot,
-  Folder,
-  MailOpen,
-  Megaphone,
-  MessagesSquare,
-  User,
-  Users,
-} from 'lucide-react';
 import { observer } from 'mobx-react-lite';
 import { usePathname, useRouter } from 'next/navigation';
 import { forwardRef, type CSSProperties, type HTMLAttributes } from 'react';
@@ -18,31 +8,9 @@ import { Badge } from '@/lib/components/ui/badge';
 import { useSDK, useStore } from '@/lib/contexts/sdk.context';
 import { useFolderDialogIds } from '@/lib/hooks/use-folder-dialog-ids';
 import { cn } from '@/lib/utils';
+import { FolderGlyph, FolderTitleText } from './folder.meta';
 
 export const FOLDER_ITEM_ESTIMATE_PX = 64;
-
-/**
- * Telegram renders a folder's `emoticon` when it has one; otherwise fall back to
- * the icon for whichever single category the folder selects.
- */
-function FolderIcon({ filter }: { filter: DialogFilterEntity }) {
-  const className = 'size-5 shrink-0';
-
-  if (filter.id === ALL_CHATS_FOLDER_ID) return <MessagesSquare className={className} />;
-  if (isUnreadFolder(filter)) return <MailOpen className={className} />;
-  if (filter.emoticon) {
-    return (
-      <span className="text-lg leading-none" aria-hidden="true">
-        {filter.emoticon}
-      </span>
-    );
-  }
-  if (filter.groups) return <Users className={className} />;
-  if (filter.broadcasts) return <Megaphone className={className} />;
-  if (filter.bots) return <Bot className={className} />;
-  if (filter.contacts || filter.nonContacts) return <User className={className} />;
-  return <Folder className={className} />;
-}
 
 interface FolderItemProps extends HTMLAttributes<HTMLLIElement> {
   folderId: string;
@@ -88,7 +56,7 @@ const FolderItem = observer(
           )}
         >
           <span className="relative flex items-center justify-center">
-            <FolderIcon filter={filter} />
+            <FolderGlyph filter={filter} />
             {unreadCount > 0 ? (
               <Badge
                 size="sm"
@@ -101,7 +69,11 @@ const FolderItem = observer(
             ) : null}
           </span>
           <span className="w-full truncate text-center text-[0.625rem] leading-tight">
-            {filter.title}
+            <FolderTitleText
+              title={filter.title}
+              entities={filter.titleEntities}
+              emojiSize={12}
+            />
           </span>
         </button>
       </li>

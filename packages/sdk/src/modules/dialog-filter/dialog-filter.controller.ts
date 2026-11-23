@@ -1,6 +1,7 @@
 import { Controller, Method, RequestLog } from '@telegenie/decorators';
 import type {
   FolderFilter,
+  SaveFolderFilterInput,
   StoreSyncPayload,
   TelegramWorkerClient,
 } from '@telegenie/libs/foundation/telegram/worker';
@@ -13,6 +14,8 @@ import {
   ALL_CHATS_FOLDER_ID,
   DEFAULT_FOLDER_ENTITIES,
   DEFAULT_FOLDER_IDS,
+  MAX_CUSTOM_FOLDER_ID,
+  MIN_CUSTOM_FOLDER_ID,
 } from './dialog-filter.constants';
 
 type DialogFilterControllerOptions = {
@@ -32,6 +35,8 @@ function toEntity(filter: FolderFilter): DialogFilterEntity {
     id: String(filter.id),
     folderId: filter.id,
     title: filter.title,
+    titleEntities: filter.titleEntities,
+    titleNoanimate: filter.titleNoanimate,
     emoticon: filter.emoticon,
     color: filter.color,
     isDefault: filter.id === 0,
@@ -115,6 +120,7 @@ export class DialogFilterController {
     }
 
     this.reconcileOrder(batch.order.map(String));
+    this.globalStore.nav.setFolderTagsEnabled(Boolean(batch.tagsEnabled));
 
     if (!this.store.getAllData().has(this.globalStore.nav.selectedFolderId)) {
       this.globalStore.nav.setSelectedFolderId(ALL_CHATS_FOLDER_ID);
@@ -150,6 +156,82 @@ export class DialogFilterController {
       await this.worker.call('dialogFilter.reorder', [serverOrder]);
     } catch (err) {
       this.globalStore.nav.setSortedFolderIds(previous);
+      throw err;
+    }
+  }
+
+  /** Create a new custom chat folder and append it to the rail order. */
+  @RequestLog()
+  @Method()
+  async create(input: Omit<SaveFolderFilterInput, 'id'>): Promise<DialogFilterEntity> {
+    const id = this.allocateFolderId();
+    const payload: SaveFolderFilterInput = {
+      ...input,
+      id,
+      isChatlist: false,
+    };
+
+    await this.worker.call('dialogFilter.save', [payload]);
+
+    const entity = toEntity({
+      ...payload,
+      isChatlist: false,
+    });
+    runInAction(() => {
+      this.store.update([new DialogFilterModel(entity)]);
+      this.appendToOrder(entity.id);
+    });
+    return entity;
+  }
+
+  /** Update an existing custom chat folder. */
+  @RequestLog()
+  @Method()
+  async update(input: SaveFolderFilterInput): Promise<DialogFilterEntity> {
+    if (input.id === 0 || DEFAULT_FOLDER_IDS.includes(String(input.id))) {
+      throw new Error('Default folder cannot be edited');
+    }
+
+    await this.worker.call('dialogFilter.save', [input]);
+
+    const entity = toEntity({
+      ...input,
+      isChatlist: Boolean(input.isChatlist),
+    });
+    runInAction(() => {
+      this.store.update([new DialogFilterModel(entity)]);
+      this.appendToOrder(entity.id);
+    });
+    return entity;
+  }
+
+  /** Delete a custom chat folder. */
+  @RequestLog()
+  @Method()
+  async delete(folderId: string): Promise<void> {
+    if (DEFAULT_FOLDER_IDS.includes(folderId)) {
+      throw new Error('Default folder cannot be deleted');
+    }
+    const id = Number(folderId);
+    if (!Number.isFinite(id) || id < MIN_CUSTOM_FOLDER_ID) {
+      throw new Error(`Invalid folder id: ${folderId}`);
+    }
+
+    await this.worker.call('dialogFilter.delete', [id]);
+    this.removeFolder(folderId);
+  }
+
+  /** Toggle folder tags in the chat list (Telegram Premium feature). */
+  @RequestLog()
+  @Method()
+  async setTagsEnabled(enabled: boolean): Promise<void> {
+    const previous = this.globalStore.nav.folderTagsEnabled;
+    this.globalStore.nav.setFolderTagsEnabled(enabled);
+
+    try {
+      await this.worker.call('dialogFilter.toggleTags', [enabled]);
+    } catch (err) {
+      this.globalStore.nav.setFolderTagsEnabled(previous);
       throw err;
     }
   }
@@ -217,6 +299,17 @@ export class DialogFilterController {
       return;
     }
     this.globalStore.nav.setSortedFolderIds(next);
+  }
+
+  private allocateFolderId(): number {
+    const used = new Set<number>();
+    for (const entity of this.store.getAllData().values()) {
+      used.add(entity.folderId);
+    }
+    for (let id = MIN_CUSTOM_FOLDER_ID; id <= MAX_CUSTOM_FOLDER_ID; id += 1) {
+      if (!used.has(id)) return id;
+    }
+    throw new Error('Maximum number of folders reached');
   }
 
   private appendToOrder(id: string): void {

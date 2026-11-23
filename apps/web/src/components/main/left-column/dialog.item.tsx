@@ -6,6 +6,7 @@ import { forwardRef, type CSSProperties, type HTMLAttributes } from 'react';
 
 import DialogItemBadge from './dialog-item.badge';
 import DialogItemSender from './dialog-item.sender';
+import { FolderTitleText, getFolderColor } from './folder.meta';
 import MessageMeta from '@/lib/components/message.meta';
 import MessageSummary from '@/lib/components/message.summary';
 import PeerAvatar from '@/lib/components/peer.avatar';
@@ -18,6 +19,7 @@ import {
   useStore,
   useStoreEntities,
 } from '@/lib/contexts/sdk.context';
+import { useDialogFolderTags } from '@/lib/hooks/use-dialog-folder-tags';
 import { cn } from '@/lib/utils';
 
 export const DIALOG_ITEM_ESTIMATE_PX = 60;
@@ -42,6 +44,7 @@ const DialogItem = observer(
     const senderPeerId =
       lastMessage?.fromId ?? (lastMessage?.out ? globalStore.auth.currentUser?.id : undefined);
     const sender = useDialogPeer(senderPeerId);
+    const folderTags = useDialogFolderTags(dialog);
 
     if (!dialog?.peerId) {
       return (
@@ -148,6 +151,31 @@ const DialogItem = observer(
                 muted={muted}
               />
             </div>
+
+            {folderTags.length > 0 ? (
+              <div className="mt-1 flex flex-wrap items-center gap-1">
+                {folderTags.map((tag) => {
+                  const colorMeta = getFolderColor(tag.color);
+                  return (
+                    <span
+                      key={tag.id}
+                      className={cn(
+                        'inline-flex max-w-24 items-center truncate rounded px-1.5 py-0.5 text-[10px] font-medium leading-none',
+                        colorMeta
+                          ? colorMeta.tagClass
+                          : 'bg-muted text-muted-foreground',
+                      )}
+                    >
+                      <FolderTitleText
+                        title={tag.title}
+                        entities={tag.titleEntities}
+                        emojiSize={11}
+                      />
+                    </span>
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
         </button>
       </li>

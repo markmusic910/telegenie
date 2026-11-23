@@ -29,6 +29,9 @@ function mockTelegram(overrides: Record<string, unknown> = {}) {
   const dialogFilter = {
     getDialogFilters: jest.fn().mockResolvedValue({ filters: [], order: [0] }),
     reorderDialogFilters: jest.fn().mockResolvedValue(undefined),
+    saveDialogFilter: jest.fn().mockResolvedValue(undefined),
+    deleteDialogFilter: jest.fn().mockResolvedValue(undefined),
+    toggleDialogFilterTags: jest.fn().mockResolvedValue(undefined),
   };
   const chat = {
     getChatsByIds: jest.fn().mockResolvedValue({ '-1': { id: '-1' } }),
@@ -180,6 +183,22 @@ describe('createTelegramWorkerHandlers', () => {
 
     await handlers['dialogFilter.reorder']([0, 3, 2]);
     expect(tg._dialogFilter.reorderDialogFilters).toHaveBeenCalledWith([0, 3, 2]);
+
+    const folderInput = {
+      id: 4,
+      title: 'Work',
+      pinnedPeerIds: [],
+      includePeerIds: ['10'],
+      excludePeerIds: [],
+    };
+    await handlers['dialogFilter.save'](folderInput);
+    expect(tg._dialogFilter.saveDialogFilter).toHaveBeenCalledWith(folderInput);
+
+    await handlers['dialogFilter.delete'](4);
+    expect(tg._dialogFilter.deleteDialogFilter).toHaveBeenCalledWith(4);
+
+    await handlers['dialogFilter.toggleTags'](true);
+    expect(tg._dialogFilter.toggleDialogFilterTags).toHaveBeenCalledWith(true);
   });
 
   it('delegates dialog.reorderPinned', async () => {

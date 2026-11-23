@@ -311,6 +311,7 @@ export class Telegram {
       this.dialogFilterService = new DialogFilterService({
         debug: this.debug,
         transportService: this.transportService,
+        localDb: this.localDb,
         getSelfId: () => this.resolveSelfId(),
       });
     }

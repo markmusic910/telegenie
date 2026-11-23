@@ -1,3 +1,5 @@
+import type { CustomEmojiEntity } from '@telegenie/libs/foundation/telegram/services/message.service';
+
 /**
  * A chat folder. Telegram exposes folders as rule sets, never as chat lists —
  * membership is derived from these fields against the loaded dialogs.
@@ -10,6 +12,10 @@ export type DialogFilterEntity = {
   /** `0` = All Chats; other ids come from the server (`messages.getDialogFilters`). */
   folderId: number;
   title: string;
+  /** Custom emoji spans inside `title` (`MessageEntityCustomEmoji`). */
+  titleEntities?: CustomEmojiEntity[];
+  /** When true, custom emojis in `title` are rendered statically. */
+  titleNoanimate?: boolean;
   emoticon?: string;
   color?: number;
   /** The default All Chats folder (`dialogFilterDefault`). */

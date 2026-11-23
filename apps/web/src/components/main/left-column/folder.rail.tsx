@@ -20,12 +20,15 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
+import { SlidersHorizontal } from 'lucide-react';
 import { observer } from 'mobx-react-lite';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { ScrollArea } from '@/lib/components/ui/scroll-area';
 import { useSDK, useStore } from '@/lib/contexts/sdk.context';
+import { cn } from '@/lib/utils';
 import FolderItem from './folder.item';
+import FolderManageDialog from './folder-manage.dialog';
 import FolderSortableItem from './folder.sortable-item';
 
 function asId(value: UniqueIdentifier): string {
@@ -45,6 +48,7 @@ const FolderRail = observer(() => {
 
   const [dragOrder, setDragOrder] = useState<string[] | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [manageOpen, setManageOpen] = useState(false);
   const dragOrderRef = useRef<string[] | null>(null);
   const startOrderRef = useRef<string[]>([]);
 
@@ -145,7 +149,24 @@ const FolderRail = observer(() => {
             </ul>
           </ScrollArea>
         </SortableContext>
+        <div className="flex h-12 shrink-0 items-center justify-center border-t border-border bg-card p-1.5">
+          <button
+            type="button"
+            title="Manage folders"
+            aria-label="Manage folders"
+            onClick={() => setManageOpen(true)}
+            className={cn(
+              'flex size-9 items-center justify-center rounded-lg p-2',
+              'text-muted-foreground transition-colors duration-100 outline-none',
+              'hover:bg-accent hover:text-foreground focus-visible:bg-accent focus-visible:text-foreground',
+              manageOpen && 'bg-accent text-foreground',
+            )}
+          >
+            <SlidersHorizontal size={20} strokeWidth={1.75} className="shrink-0" />
+          </button>
+        </div>
       </div>
+      <FolderManageDialog open={manageOpen} onOpenChange={setManageOpen} />
       <DragOverlay dropAnimation={null}>
         {activeId ? (
           <ul className="m-0 w-[68px] list-none p-1.5">

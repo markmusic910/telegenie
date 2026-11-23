@@ -1,6 +1,7 @@
 import { Api } from '@telegenie/teleproto';
 
 import { markedPeerIdFromApiInputPeer } from '../../helpers/peer-id.helper';
+import type { CustomEmojiEntity } from '../message.service';
 import { convertTypeTextWithEntities } from './input.converter';
 
 /**
@@ -16,6 +17,10 @@ export type FolderFilter = {
   /** `0` for the default "All Chats" folder (`dialogFilterDefault`). */
   id: number;
   title: string;
+  /** Custom emoji spans inside `title` (`MessageEntityCustomEmoji`). */
+  titleEntities?: CustomEmojiEntity[];
+  /** When true, custom emojis in the folder title are rendered statically. */
+  titleNoanimate?: boolean;
   emoticon?: string;
   color?: number;
   /** `dialogFilterChatlist` (shared folder link) — explicit peer lists only, no category flags. */
@@ -40,6 +45,32 @@ export type DialogFilterBatch = {
   tagsEnabled?: boolean;
 };
 
+/**
+ * Payload sent to `messages.updateDialogFilter` to create or update a folder.
+ * Uses Bot API / TDLib peer ids; `DialogFilterService` resolves them to
+ * `Api.TypeInputPeer` before invoking MTProto.
+ */
+export type SaveFolderFilterInput = {
+  id: number;
+  title: string;
+  titleEntities?: CustomEmojiEntity[];
+  titleNoanimate?: boolean;
+  emoticon?: string;
+  color?: number;
+  isChatlist?: boolean;
+  contacts?: boolean;
+  nonContacts?: boolean;
+  groups?: boolean;
+  broadcasts?: boolean;
+  bots?: boolean;
+  excludeMuted?: boolean;
+  excludeRead?: boolean;
+  excludeArchived?: boolean;
+  pinnedPeerIds: string[];
+  includePeerIds: string[];
+  excludePeerIds: string[];
+};
+
 /** All Chats — `dialogFilterDefault` carries no id of its own. */
 export const DEFAULT_FOLDER_FILTER_ID = 0;
 
@@ -53,9 +84,30 @@ function toPeerIds(peers: Api.TypeInputPeer[] | undefined, selfId?: string): str
   return ids;
 }
 
-function titleOf(title: Api.TypeTextWithEntities | undefined): string {
-  if (!title) return '';
-  return convertTypeTextWithEntities(title).text ?? '';
+function convertTitle(title: Api.TypeTextWithEntities | undefined): {
+  text: string;
+  entities?: CustomEmojiEntity[];
+} {
+  if (!title) return { text: '' };
+  const converted = convertTypeTextWithEntities(title);
+  const customEmojis: CustomEmojiEntity[] = [];
+  for (const entity of converted.entities ?? []) {
+    if (
+      entity.className === 'MessageEntityCustomEmoji' &&
+      'documentId' in entity &&
+      typeof entity.documentId === 'string'
+    ) {
+      customEmojis.push({
+        offset: entity.offset,
+        length: entity.length,
+        documentId: entity.documentId,
+      });
+    }
+  }
+  return {
+    text: converted.text ?? '',
+    ...(customEmojis.length > 0 ? { entities: customEmojis } : {}),
+  };
 }
 
 export function convertTypeDialogFilter(
@@ -74,9 +126,12 @@ export function convertTypeDialogFilter(
   }
 
   if (filter instanceof Api.DialogFilterChatlist) {
+    const title = convertTitle(filter.title);
     return {
       id: filter.id,
-      title: titleOf(filter.title),
+      title: title.text,
+      titleEntities: title.entities,
+      titleNoanimate: filter.titleNoanimate || undefined,
       emoticon: filter.emoticon,
       color: filter.color,
       isChatlist: true,
@@ -87,9 +142,12 @@ export function convertTypeDialogFilter(
   }
 
   if (filter instanceof Api.DialogFilter) {
+    const title = convertTitle(filter.title);
     return {
       id: filter.id,
-      title: titleOf(filter.title),
+      title: title.text,
+      titleEntities: title.entities,
+      titleNoanimate: filter.titleNoanimate || undefined,
       emoticon: filter.emoticon,
       color: filter.color,
       isChatlist: false,

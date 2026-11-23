@@ -99,6 +99,15 @@ export function createTelegramWorkerHandlers(
     'dialogFilter.reorder': async (order) => {
       await tg.getDialogFilterService().reorderDialogFilters(order);
     },
+    'dialogFilter.save': async (filter) => {
+      await tg.getDialogFilterService().saveDialogFilter(filter);
+    },
+    'dialogFilter.delete': async (id) => {
+      await tg.getDialogFilterService().deleteDialogFilter(id);
+    },
+    'dialogFilter.toggleTags': async (enabled) => {
+      await tg.getDialogFilterService().toggleDialogFilterTags(enabled);
+    },
 
     'chat.getChatsByIds': async (ids) => {
       return tg.getChatService().getChatsByIds(ids);
