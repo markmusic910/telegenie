@@ -20,6 +20,7 @@ import {
   useStoreEntities,
 } from '@/lib/contexts/sdk.context';
 import { useDialogFolderTags } from '@/lib/hooks/use-dialog-folder-tags';
+import { useSelectDialog } from '@/lib/hooks/use-select-dialog';
 import { cn } from '@/lib/utils';
 
 export const DIALOG_ITEM_ESTIMATE_PX = 60;
@@ -35,6 +36,7 @@ const DialogItem = observer(
     ref,
   ) {
     const sdk = useSDK();
+    const selectDialog = useSelectDialog();
     const globalStore = useStore('global');
     const dialog = useStoreEntities('dialog', dialogId);
     const peerId = dialog?.peerId || dialogId;
@@ -108,7 +110,7 @@ const DialogItem = observer(
           id={`dialog-item-${dialog.id}`}
           type="button"
           onClick={() => {
-            void sdk.messageLoad.selectDialog(dialogId);
+            void selectDialog(dialogId);
           }}
           className={cn(
             'group flex w-full items-center gap-3 rounded-lg border border-transparent px-3 py-2.5 text-left',

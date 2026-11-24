@@ -1984,6 +1984,93 @@ describe('MessageLoadController.selectDialogByUsername', () => {
   });
 });
 
+describe('MessageLoadController catch-up for stale listedFollowsNewest / restored dialog', () => {
+  it('jumpToBottom fetches newest history when listedFollowsNewest is true but topMessageId moved ahead', async () => {
+    const sm = new StoreManager();
+    sm.set(
+      'dialog',
+      new EntityStore<Dialog, DialogEntity>({
+        model: Dialog,
+        type: MODEL_TYPE.ENTITY_MODEL,
+        dataProvider: new EntityDataProvider({ fetcher: async () => [] }),
+      }),
+    );
+    sm.get('dialog').update([
+      new Dialog({
+        id: '7',
+        peerId: '7',
+        topMessageId: '105',
+        unreadCount: 0,
+        isFolder: false,
+      } as DialogEntity),
+    ]);
+    const globalStore = new GlobalStore(sm);
+    const thread = globalStore.getOrCreateThreadUI('7');
+    thread.replaceListedWindow(['99', '100']);
+    thread.setListedFollowsNewest(true);
+
+    const call = jest.fn().mockResolvedValue({
+      messages: [
+        { id: 104, peerId: '7', date: 1004, message: 'm104', out: false },
+        { id: 105, peerId: '7', date: 1005, message: 'm105', out: false },
+      ],
+      chats: [],
+      users: [],
+      count: 2,
+    });
+    const { load: controller } = createControllers(sm, call, globalStore);
+
+    await controller.jumpToBottom('7');
+
+    expect(call).toHaveBeenCalledWith(
+      'message.loadHistory',
+      expect.arrayContaining(['7', expect.objectContaining({ direction: 'backwards', offsetId: 105 })]),
+    );
+    expect(globalStore.getThreadUI('7')?.listedIds).toContain('105');
+  });
+
+  it('syncRestoredSelectedDialog catches up when pinned to bottom and topMessageId advanced', async () => {
+    const sm = new StoreManager();
+    sm.set(
+      'dialog',
+      new EntityStore<Dialog, DialogEntity>({
+        model: Dialog,
+        type: MODEL_TYPE.ENTITY_MODEL,
+        dataProvider: new EntityDataProvider({ fetcher: async () => [] }),
+      }),
+    );
+    sm.get('dialog').update([
+      new Dialog({
+        id: '7',
+        peerId: '7',
+        topMessageId: '105',
+        unreadCount: 0,
+        isFolder: false,
+      } as DialogEntity),
+    ]);
+    const globalStore = new GlobalStore(sm);
+    globalStore.nav.setSelectedDialogId('7');
+    const thread = globalStore.getOrCreateThreadUI('7');
+    thread.replaceListedWindow(['99', '100']);
+    thread.setHistoryState({ historyLoaded: true });
+    thread.setListedFollowsNewest(true);
+    thread.setPinToBottom(true);
+
+    const call = jest.fn().mockResolvedValue({
+      messages: [{ id: 105, peerId: '7', date: 1005, message: 'm105', out: false }],
+      chats: [],
+      users: [],
+      count: 1,
+    });
+    const { load: controller } = createControllers(sm, call, globalStore);
+
+    await controller.syncRestoredSelectedDialog('7');
+
+    expect(call).toHaveBeenCalledWith('message.loadHistory', expect.anything());
+    expect(globalStore.getThreadUI('7')?.listedIds).toContain('105');
+  });
+});
+
 describe('MessageLoadController.getMessagesByIds cache', () => {
   it('returns SDK cache hits without calling the worker', async () => {
     const call = jest.fn();

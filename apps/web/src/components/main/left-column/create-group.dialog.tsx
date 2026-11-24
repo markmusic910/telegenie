@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import { Camera, Search, UserPlus } from 'lucide-react';
 import { observer } from 'mobx-react-lite';
 import { useSDK } from '@/lib/contexts/sdk.context';
+import { useSelectDialog } from '@/lib/hooks/use-select-dialog';
 import type { User as SDKUser } from '@telegenie/sdk';
 
 import {
@@ -28,6 +29,7 @@ interface CreateGroupDialogProps {
 
 export const CreateGroupDialog = observer(({ open, onOpenChange }: CreateGroupDialogProps) => {
   const sdk = useSDK();
+  const selectDialog = useSelectDialog();
 
   const [name, setName] = useState('');
   const [photoFile, setPhotoFile] = useState<File | null>(null);
@@ -148,7 +150,7 @@ export const CreateGroupDialog = observer(({ open, onOpenChange }: CreateGroupDi
 
       onOpenChange(false);
       if (createdId) {
-        void sdk.messageLoad.selectDialog(createdId);
+        void selectDialog(createdId);
       }
     } catch (err) {
       console.error('[CreateGroupDialog] failed to create group', err);

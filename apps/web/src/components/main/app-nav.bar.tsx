@@ -1,6 +1,8 @@
 'use client';
 
+import { useStore } from '@/lib/contexts/sdk.context';
 import { cn } from '@/lib/utils';
+import { dialogHref, isChatsPathname } from '@/lib/utils/dialog-url';
 import { MessagesSquare, Settings, UserRound } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 
@@ -11,9 +13,10 @@ import { usePathname, useRouter } from 'next/navigation';
 export default function AppNavBar() {
   const router = useRouter();
   const pathname = usePathname();
+  const globalStore = useStore('global');
 
   const contacts = pathname.startsWith('/contacts');
-  const chats = pathname === '/';
+  const chats = isChatsPathname(pathname);
   const settings = pathname.startsWith('/settings');
 
   return (
@@ -24,7 +27,11 @@ export default function AppNavBar() {
       <NavItem label="Contacts" active={contacts} onClick={() => router.push('/contacts')}>
         <UserRound size={20} strokeWidth={1.75} />
       </NavItem>
-      <NavItem label="Chats" active={chats} onClick={() => router.push('/')}>
+      <NavItem
+        label="Chats"
+        active={chats}
+        onClick={() => router.push(dialogHref(globalStore.nav.selectedDialogId))}
+      >
         <MessagesSquare size={20} strokeWidth={1.75} />
       </NavItem>
       <NavItem label="Settings" active={settings} onClick={() => router.push('/settings/profile')}>

@@ -86,6 +86,8 @@ export type WorkerLike = {
 
 export type CallOptions = {
   transfer?: Transferable[];
+  /** Reject with `RpcError(..., 'RPC_TIMEOUT')` if no response arrives within this duration. */
+  timeoutMs?: number;
 };
 
 export class RpcError extends Error {

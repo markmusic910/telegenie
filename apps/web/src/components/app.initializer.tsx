@@ -1,11 +1,13 @@
 'use client';
 
 import { env } from '@/env';
+import { Button } from '@/lib/components/ui/button';
 import { toast } from 'sonner';
 import { useSDK, useStore } from '@/lib/contexts/sdk.context';
+import { parseDialogIdFromPathname } from '@/lib/utils/dialog-url';
 import { observer } from 'mobx-react-lite';
 import { usePathname, useRouter } from 'next/navigation';
-import React, { useEffect } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import StoreDebugPanel from './debug/store.debug';
 
 interface AppInitializerProps {
@@ -17,15 +19,23 @@ const AppInitializer = observer(({ children }: AppInitializerProps) => {
   const router = useRouter();
   const sdk = useSDK();
   const globalStore = useStore('global');
+  const initialDialogIdRef = useRef<string | undefined>(parseDialogIdFromPathname(pathname));
+
+  const runInit = useCallback(() => {
+    void sdk
+      .init({
+        apiId: Number(env.telegramApiId),
+        apiHash: env.telegramApiHash,
+        apiBaseUrl: env.apiBaseUrl,
+        backendBotUsername: env.telegramBotUsername,
+        initialDialogId: initialDialogIdRef.current,
+      })
+      .catch(() => undefined);
+  }, [sdk]);
 
   useEffect(() => {
-    void sdk.init({
-      apiId: Number(env.telegramApiId),
-      apiHash: env.telegramApiHash,
-      apiBaseUrl: env.apiBaseUrl,
-      backendBotUsername: env.telegramBotUsername,
-    });
-  }, [sdk]);
+    runInit();
+  }, [runInit]);
 
   useEffect(() => {
     return sdk.agent.onMemorySyncComplete((payload) => {
@@ -42,14 +52,15 @@ const AppInitializer = observer(({ children }: AppInitializerProps) => {
   }, [sdk.agent]);
 
   const isAuthPage = pathname === '/auth';
+  const isAuthError = globalStore.auth.authStep === 'error';
   const isInitializing = globalStore.auth.authStep === 'idle' || globalStore.auth.authIsLoading;
   const isAuthenticated = globalStore.auth.authStep === 'success';
 
   useEffect(() => {
-    if (!isInitializing && !isAuthenticated && !isAuthPage) {
+    if (!isInitializing && !isAuthenticated && !isAuthError && !isAuthPage) {
       router.push('/auth');
     }
-  }, [isInitializing, isAuthenticated, isAuthPage, router]);
+  }, [isInitializing, isAuthenticated, isAuthError, isAuthPage, router]);
 
   if (!isAuthPage && !isAuthenticated) {
     return (
@@ -77,14 +88,27 @@ const AppInitializer = observer(({ children }: AppInitializerProps) => {
               </g>
             </svg>
           </div>
-          <div className="flex items-center gap-2 mt-2">
-            <div className="w-2.5 h-2.5 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.3s]" />
-            <div className="w-2.5 h-2.5 bg-purple-500 rounded-full animate-bounce [animation-delay:-0.15s]" />
-            <div className="w-2.5 h-2.5 bg-pink-500 rounded-full animate-bounce" />
-          </div>
-          <p className="text-sm font-medium text-muted-foreground animate-pulse">
-            {isInitializing ? 'Connecting to Telegram...' : 'Redirecting to login...'}
-          </p>
+          {isAuthError ? (
+            <div className="flex flex-col items-center gap-3 mt-2 max-w-sm text-center px-4">
+              <p className="text-sm font-medium text-destructive">
+                {globalStore.auth.authError || 'Failed to connect to Telegram'}
+              </p>
+              <Button size="sm" onClick={runInit}>
+                Retry
+              </Button>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center gap-2 mt-2">
+                <div className="w-2.5 h-2.5 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.3s]" />
+                <div className="w-2.5 h-2.5 bg-purple-500 rounded-full animate-bounce [animation-delay:-0.15s]" />
+                <div className="w-2.5 h-2.5 bg-pink-500 rounded-full animate-bounce" />
+              </div>
+              <p className="text-sm font-medium text-muted-foreground animate-pulse">
+                {isInitializing ? 'Connecting to Telegram...' : 'Redirecting to login...'}
+              </p>
+            </>
+          )}
         </div>
         {process.env.NODE_ENV === 'development' ? <StoreDebugPanel /> : null}
       </div>

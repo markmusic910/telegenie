@@ -73,6 +73,32 @@ function isSessionPasswordNeeded(err: unknown): boolean {
   );
 }
 
+const PERMANENT_AUTH_INVALIDATION_CODES = [
+  'AUTH_KEY_UNREGISTERED',
+  'AUTH_KEY_INVALID',
+  'SESSION_REVOKED',
+  'SESSION_EXPIRED',
+  'USER_DEACTIVATED',
+  'USER_DEACTIVATED_BAN',
+];
+
+function isPermanentAuthInvalidation(err: unknown): boolean {
+  const message =
+    err instanceof Error
+      ? err.message
+      : typeof err === 'object' &&
+          err !== null &&
+          'errorMessage' in err &&
+          typeof (err as { errorMessage?: unknown }).errorMessage === 'string'
+        ? (err as { errorMessage: string }).errorMessage
+        : '';
+  return PERMANENT_AUTH_INVALIDATION_CODES.some((code) => message.includes(code));
+}
+
+const PREPARE_CLIENT_TIMEOUT_MS = 20_000;
+const IS_AUTHORIZED_TIMEOUT_MS = 15_000;
+const GET_SESSION_TIMEOUT_MS = 10_000;
+
 @Controller
 export class AuthController {
   private debug: boolean;
@@ -129,11 +155,17 @@ export class AuthController {
     this.auth.setAuthError(null);
 
     try {
-      await this.worker.call('auth.prepareClient', [savedSession]);
-      const authorized = await this.worker.call('auth.isAuthorized', []);
+      await this.worker.call('auth.prepareClient', [savedSession], {
+        timeoutMs: PREPARE_CLIENT_TIMEOUT_MS,
+      });
+      const authorized = await this.worker.call('auth.isAuthorized', [], {
+        timeoutMs: IS_AUTHORIZED_TIMEOUT_MS,
+      });
 
       if (authorized) {
-        const sessionString = await this.worker.call('auth.getSessionString', []);
+        const sessionString = await this.worker.call('auth.getSessionString', [], {
+          timeoutMs: GET_SESSION_TIMEOUT_MS,
+        });
         this.persistSession(sessionString);
         this.auth.setAuthSessionString(sessionString);
         this.auth.setAuthStep('success');
@@ -143,9 +175,14 @@ export class AuthController {
         this.auth.setAuthStep('phone');
       }
     } catch (err) {
-      localStorage.removeItem(SESSION_STORAGE_KEY);
-      this.auth.setAuthError(mapAuthError(err));
-      this.auth.setAuthStep('phone');
+      if (isPermanentAuthInvalidation(err)) {
+        localStorage.removeItem(SESSION_STORAGE_KEY);
+        this.auth.setAuthError(mapAuthError(err));
+        this.auth.setAuthStep('phone');
+      } else {
+        this.auth.setAuthError(mapAuthError(err));
+        this.auth.setAuthStep('error');
+      }
     } finally {
       this.auth.setAuthLoading(false);
     }

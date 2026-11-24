@@ -1,6 +1,7 @@
 'use client';
 
 import { useDialogPeer, useSDK } from '@/lib/contexts/sdk.context';
+import { useSelectDialog } from '@/lib/hooks/use-select-dialog';
 import { ALL_CHATS_FOLDER_ID, fallbackPeerDisplay } from '@telegenie/sdk';
 import PeerAvatar from '@/lib/components/peer.avatar';
 import { ArrowLeft, ArrowRight, Camera, Check, Copy, Globe, Lock, RadioReceiver } from 'lucide-react';
@@ -28,6 +29,7 @@ interface CreateChannelDialogProps {
 
 export const CreateChannelDialog = observer(({ open, onOpenChange }: CreateChannelDialogProps) => {
   const sdk = useSDK();
+  const selectDialog = useSelectDialog();
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [name, setName] = useState('');
@@ -166,7 +168,7 @@ export const CreateChannelDialog = observer(({ open, onOpenChange }: CreateChann
   const completeCreation = (channelId: string) => {
     onOpenChange(false);
     sdk.dialogFilter.selectFolder(ALL_CHATS_FOLDER_ID);
-    void sdk.messageLoad.selectDialog(channelId);
+    void selectDialog(channelId);
   };
 
   const handleGoToChannel = () => {

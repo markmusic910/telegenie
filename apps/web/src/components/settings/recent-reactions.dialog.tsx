@@ -12,6 +12,7 @@ import {
 } from '@/lib/components/ui/dialog';
 import { useDialogPeer, useMessage, useSDK, useStore } from '@/lib/contexts/sdk.context';
 import { formatReactionTimestamp } from '@/lib/utils/date';
+import { dialogHref } from '@/lib/utils/dialog-url';
 import { emojiPresentation } from '@/lib/utils/emoji';
 import { collectAlbumPreview, type RecentReactionMessage } from '@telegenie/sdk';
 import { observer } from 'mobx-react-lite';
@@ -116,7 +117,7 @@ export default function RecentReactionsDialog({ open, onOpenChange }: RecentReac
   const onOpenMessage = (row: RecentReactionMessage) => {
     onOpenChange(false);
     void sdk.messageLoad.focusMessage(row.peerId, { messageId: row.messageId });
-    router.push('/');
+    router.push(dialogHref(row.peerId));
   };
 
   const onClear = () => {

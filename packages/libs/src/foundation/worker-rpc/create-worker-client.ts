@@ -18,6 +18,7 @@ function newRequestId(): string {
 type PendingCall = {
   resolve: (value: unknown) => void;
   reject: (reason?: unknown) => void;
+  timer?: ReturnType<typeof setTimeout>;
 };
 
 type PendingStream = {
@@ -105,6 +106,7 @@ export function createWorkerClient<
 
       const slot = pending.get(msg.id);
       if (!slot) return;
+      if (slot.timer) clearTimeout(slot.timer);
       pending.delete(msg.id);
       if (msg.ok === true) {
         slot.resolve(msg.value);
@@ -144,9 +146,27 @@ export function createWorkerClient<
     ): Promise<P[K]['result']> {
       const id = postCall(method, args, options, false);
       const { promise, resolve, reject } = Promise.withResolvers<P[K]['result']>();
+      const timeoutMs = options?.timeoutMs;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      if (typeof timeoutMs === 'number' && Number.isFinite(timeoutMs) && timeoutMs > 0) {
+        timer = setTimeout(() => {
+          const slot = pending.get(id);
+          if (!slot) return;
+          pending.delete(id);
+          slot.reject(
+            new RpcError(
+              `RPC timeout after ${timeoutMs}ms`,
+              'RPC_TIMEOUT',
+              'RpcError',
+              String(method),
+            ),
+          );
+        }, timeoutMs);
+      }
       pending.set(id, {
         resolve: resolve as (value: unknown) => void,
         reject,
+        timer,
       });
       return promise;
     },
@@ -220,6 +240,7 @@ export function createWorkerClient<
     terminate(): void {
       worker.removeEventListener('message', onMessage);
       for (const [, slot] of pending) {
+        if (slot.timer) clearTimeout(slot.timer);
         slot.reject(new RpcError('Worker terminated', 'WORKER_TERMINATED'));
       }
       pending.clear();

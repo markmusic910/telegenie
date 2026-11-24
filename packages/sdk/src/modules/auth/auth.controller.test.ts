@@ -2,7 +2,7 @@ import { BACKEND_TOKEN_STORAGE_KEY } from '@telegenie/config';
 import type { TelegramWorkerClient } from '@telegenie/libs/foundation/telegram/worker';
 import GlobalStore from '../../store/global/global.store';
 import StoreManager from '../../store/store.manager';
-import { AuthController } from './auth.controller';
+import { AuthController, SESSION_STORAGE_KEY } from './auth.controller';
 
 class MockLocalStorage {
   private store: Record<string, string> = {};
@@ -390,5 +390,41 @@ describe('AuthController Backend Authentication', () => {
         body: JSON.stringify({ enableTracing: true }),
       }),
     );
+  });
+
+  describe('tryRestoreSession error classification', () => {
+    it('preserves localStorage session and enters error state on transient/timeout failures', async () => {
+      localStorage.setItem(SESSION_STORAGE_KEY, 'saved-session-string');
+      mockWorker.call.mockRejectedValueOnce(new Error('RPC timeout after 20000ms'));
+
+      await authController.tryRestoreSession();
+
+      expect(localStorage.getItem(SESSION_STORAGE_KEY)).toBe('saved-session-string');
+      expect(globalStore.auth.authStep).toBe('error');
+      expect(globalStore.auth.authError).toContain('RPC timeout');
+      expect(globalStore.auth.authIsLoading).toBe(false);
+    });
+
+    it('clears localStorage session and transitions to phone when unauthorized', async () => {
+      localStorage.setItem(SESSION_STORAGE_KEY, 'saved-session-string');
+      mockWorker.call
+        .mockResolvedValueOnce(undefined as never)
+        .mockResolvedValueOnce(false as never);
+
+      await authController.tryRestoreSession();
+
+      expect(localStorage.getItem(SESSION_STORAGE_KEY)).toBeNull();
+      expect(globalStore.auth.authStep).toBe('phone');
+    });
+
+    it('clears localStorage session and transitions to phone on SESSION_REVOKED', async () => {
+      localStorage.setItem(SESSION_STORAGE_KEY, 'saved-session-string');
+      mockWorker.call.mockRejectedValueOnce(new Error('SESSION_REVOKED'));
+
+      await authController.tryRestoreSession();
+
+      expect(localStorage.getItem(SESSION_STORAGE_KEY)).toBeNull();
+      expect(globalStore.auth.authStep).toBe('phone');
+    });
   });
 });

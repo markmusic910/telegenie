@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 
 import ChatPickerDialog from '@/lib/components/chat-picker.dialog';
 import { useSDK, useStore } from '@/lib/contexts/sdk.context';
+import { useSelectDialog } from '@/lib/hooks/use-select-dialog';
 
 export interface ForwardRecipientDialogProps {
   open: boolean;
@@ -20,6 +21,7 @@ const ForwardRecipientDialog = observer(function ForwardRecipientDialog({
   messageId,
 }: ForwardRecipientDialogProps) {
   const sdk = useSDK();
+  const selectDialog = useSelectDialog();
   const globalStore = useStore('global');
   const [busy, setBusy] = useState(false);
 
@@ -39,7 +41,7 @@ const ForwardRecipientDialog = observer(function ForwardRecipientDialog({
         if (!result.ok) return;
       } else {
         sdk.messageDraft.stageForward(peerId, fromPeerId, messageId);
-        await sdk.messageLoad.selectDialog(peerId);
+        await selectDialog(peerId);
       }
       onOpenChange(false);
     } finally {

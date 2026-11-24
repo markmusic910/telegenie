@@ -2,7 +2,8 @@
 
 import { observer } from 'mobx-react-lite';
 import { AnimatePresence, motion } from 'motion/react';
-import { useRef, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
 
 import GenieGlobalContainer from '@/components/genie/genie-global.container';
 import LeftColumnContainer from '@/components/main/left-column/left-column.container';
@@ -11,18 +12,52 @@ import MessagesContainer from '@/components/main/middle-column/messages.containe
 import RightColumnContainer, {
   type RightColumnView,
 } from '@/components/main/right-column/right-column.container';
+import { useSDK, useStore } from '@/lib/contexts/sdk.context';
+import { dialogHref } from '@/lib/utils/dialog-url';
 
 /**
  * MainPage
  *
  * Coordinates LeftColumn (dialogs), MiddleColumn (messages or Genie Global View),
  * and RightColumn (Genie Copilot or Dialog Config).
+ *
+ * Mounted inside `app/(main)/(chats)/layout.tsx` so navigating between `/` and
+ * `/chat/[dialogId]` keeps the layout, dialog list, and scroll state intact.
  */
 const MainPage = observer(() => {
+  const sdk = useSDK();
+  const globalStore = useStore('global');
+  const router = useRouter();
+  const params = useParams<{ dialogId?: string | string[] }>();
+  const rawDialogId = Array.isArray(params?.dialogId) ? params.dialogId[0] : params?.dialogId;
+  let dialogId: string | undefined;
+  if (rawDialogId) {
+    try {
+      dialogId = decodeURIComponent(rawDialogId);
+    } catch {
+      dialogId = rawDialogId;
+    }
+  }
   const configPanelRef = usePanelRef();
   const [isGlobalGenieOpen, setIsGlobalGenieOpen] = useState(false);
   const [rightColumnView, setRightColumnView] = useState<RightColumnView>('GENIE');
   const wasGenieOpenBeforeGlobal = useRef(false);
+
+  // Sync Next.js route param -> store (handles direct links and Back/Forward),
+  // or redirect `/` to `/chat/<selectedDialogId>` when restored from cache.
+  useEffect(() => {
+    if (dialogId) {
+      if (globalStore.nav.selectedDialogId !== dialogId) {
+        void sdk.messageLoad.selectDialog(dialogId);
+      }
+      return;
+    }
+
+    const restoredId = globalStore.nav.selectedDialogId;
+    if (restoredId) {
+      router.replace(dialogHref(restoredId));
+    }
+  }, [dialogId, globalStore, router, sdk.messageLoad]);
 
   function toggleConfig() {
     const panel = configPanelRef.current;

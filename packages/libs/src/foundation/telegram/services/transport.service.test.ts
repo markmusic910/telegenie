@@ -57,6 +57,57 @@ describe('TransportService.prepareConnection', () => {
     const transport = new TransportService();
     await expect(transport.prepareConnection()).rejects.toThrow('unable to connect to telegram');
   });
+
+  it('reuses an already connected client for the same session and credentials', async () => {
+    const client = createClient({ connected: true });
+    initClientMock.mockResolvedValue(client);
+
+    const transport = new TransportService();
+    await transport.prepareConnection('saved-session', { apiId: 1, apiHash: 'hash' });
+    await transport.prepareConnection('saved-session', { apiId: 1, apiHash: 'hash' });
+
+    expect(initClientMock).toHaveBeenCalledTimes(1);
+    expect(transport.client).toBe(client as never);
+  });
+
+  it('deduplicates concurrent prepareConnection calls for the same session', async () => {
+    let resolveConnect!: (value: boolean) => void;
+    const connectPromise = new Promise<boolean>((resolve) => {
+      resolveConnect = resolve;
+    });
+    const client = createClient({
+      connected: false,
+      connect: jest.fn().mockReturnValue(connectPromise),
+    });
+    initClientMock.mockResolvedValue(client);
+
+    const transport = new TransportService();
+    const p1 = transport.prepareConnection('saved-session', { apiId: 1, apiHash: 'hash' });
+    const p2 = transport.prepareConnection('saved-session', { apiId: 1, apiHash: 'hash' });
+    resolveConnect(true);
+    await Promise.all([p1, p2]);
+
+    expect(initClientMock).toHaveBeenCalledTimes(1);
+    expect(client.connect).toHaveBeenCalledTimes(1);
+  });
+
+  it('disconnects old client and notifies listeners when client is replaced', async () => {
+    const disconnect = jest.fn().mockResolvedValue(undefined);
+    const clientA = { ...createClient({ connected: true }), disconnect };
+    const clientB = createClient({ connected: true });
+    initClientMock.mockResolvedValueOnce(clientA).mockResolvedValueOnce(clientB);
+
+    const onClientChange = jest.fn();
+    const transport = new TransportService();
+    transport.subscribeClientChange(onClientChange);
+
+    await transport.prepareConnection('session-a', { apiId: 1, apiHash: 'hash' });
+    await transport.prepareConnection('session-b', { apiId: 1, apiHash: 'hash' });
+
+    expect(disconnect).toHaveBeenCalledTimes(1);
+    expect(onClientChange).toHaveBeenCalledWith(clientB);
+    expect(transport.client).toBe(clientB as never);
+  });
 });
 
 describe('TransportService.init', () => {

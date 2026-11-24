@@ -318,6 +318,16 @@ describe('exposeSharedWorkerApi', () => {
 
     host.dispose();
   });
+
+  it('rejects with RPC_TIMEOUT when timeoutMs elapses without a response', async () => {
+    const { main } = createPair();
+    const client = createWorkerClient<TestApi, TestEvents>(main);
+
+    await expect(client.call('add', [1, 2], { timeoutMs: 20 })).rejects.toMatchObject({
+      code: 'RPC_TIMEOUT',
+      method: 'add',
+    });
+  });
 });
 
 describe('worker-rpc request logging', () => {

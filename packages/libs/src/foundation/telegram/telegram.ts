@@ -73,6 +73,7 @@ export class Telegram {
   private readonly dialogOrderListeners = new Set<DialogOrderListener>();
   private messageNotificationUnsubs: Array<() => void> = [];
   private storeSyncUnsubs: Array<() => void> = [];
+  private unsubClientChange: (() => void) | undefined;
   private readonly dialogOrderTracker = new DialogOrderTracker();
   private openAccountSlot: string | undefined;
 
@@ -120,6 +121,10 @@ export class Telegram {
 
     this.attachMessageNotificationHooks();
     this.attachStoreSyncHooks();
+    this.unsubClientChange?.();
+    this.unsubClientChange = this.transportService.subscribeClientChange(() => {
+      this.updateManager?.rebindClient();
+    });
     this.assignServiceDeps();
     this.openAccountSlot = options.accountSlot;
   }
@@ -139,6 +144,8 @@ export class Telegram {
   /** Stop updates, clear entity listeners, close LocalDb. */
   async closeAccount(): Promise<void> {
     this.stopUpdates();
+    this.unsubClientChange?.();
+    this.unsubClientChange = undefined;
     this.detachMessageNotificationHooks();
     this.detachStoreSyncHooks();
     this.dialogOrderTracker.reset();

@@ -3,8 +3,13 @@ import { createRoot, type Root } from 'react-dom/client';
 
 import MessageText from '@/lib/components/message.text';
 
+const push = jest.fn();
 const selectDialog = jest.fn();
 const selectDialogByUsername = jest.fn().mockResolvedValue(undefined);
+
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({ push }),
+}));
 
 jest.mock('@/lib/components/custom.emoji', () => ({
   __esModule: true,

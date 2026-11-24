@@ -1,4 +1,4 @@
-import { Api } from '@telegenie/teleproto';
+import { Api, type TelegramClient } from '@telegenie/teleproto';
 import { Raw } from '@telegenie/teleproto/events';
 import bigInt from 'big-integer';
 
@@ -110,6 +110,7 @@ export class UpdateManager {
 
   private readonly channelPoller: ChannelPoller;
   private started = false;
+  private attachedClient: TelegramClient | null = null;
   private eventHandler: ((update: Api.TypeUpdate | Api.TypeUpdates) => void) | null = null;
   private readonly rawEvent = new Raw({});
 
@@ -152,10 +153,19 @@ export class UpdateManager {
   }
 
   async start(): Promise<void> {
-    if (this.started) return;
+    if (this.started) {
+      if (this.attachedClient === this.transportService.client) return;
+      this.rebindClient();
+      void this.recoverCommon().catch((err) => {
+        this.log('recoverCommon after rebind failed', err);
+      });
+      return;
+    }
+
+    const client = this.client;
     const state = await this.localDb.getCommonState();
     if (!state) {
-      const remote = await this.client.invoke(new Api.updates.GetState());
+      const remote = await client.invoke(new Api.updates.GetState());
       await this.localDb.setCommonState({
         pts: remote.pts,
         qts: remote.qts,
@@ -167,16 +177,49 @@ export class UpdateManager {
     this.eventHandler = (update) => {
       void this.process(update, 'socket');
     };
-    this.client.addEventHandler(this.eventHandler, this.rawEvent);
+    client.addEventHandler(this.eventHandler, this.rawEvent);
+    this.attachedClient = client;
     this.started = true;
     this.log('started');
+
+    if (state) {
+      void this.recoverCommon().catch((err) => {
+        this.log('initial recoverCommon failed', err);
+      });
+    }
+  }
+
+  /**
+   * Re-attach the Raw update listener when TransportService replaces its TelegramClient
+   * while UpdateManager is already running (e.g. SharedWorker re-auth / reconnect).
+   */
+  rebindClient(): void {
+    if (!this.started || !this.eventHandler) return;
+    const nextClient = this.transportService.client;
+    if (!nextClient || this.attachedClient === nextClient) return;
+    if (this.attachedClient) {
+      try {
+        this.attachedClient.removeEventHandler(this.eventHandler, this.rawEvent);
+      } catch {
+        // ignore errors detaching from superseded client
+      }
+    }
+    nextClient.addEventHandler(this.eventHandler, this.rawEvent);
+    this.attachedClient = nextClient;
+    this.log('rebound event handler to new TelegramClient');
   }
 
   stop(): void {
     if (!this.started) return;
-    if (this.eventHandler && this.transportService.client) {
-      this.transportService.client.removeEventHandler(this.eventHandler, this.rawEvent);
+    const targetClient = this.attachedClient ?? this.transportService.client;
+    if (this.eventHandler && targetClient) {
+      try {
+        targetClient.removeEventHandler(this.eventHandler, this.rawEvent);
+      } catch {
+        // ignore
+      }
     }
+    this.attachedClient = null;
     this.eventHandler = null;
     for (const timer of this.gapTimers.values()) clearTimeout(timer);
     this.gapTimers.clear();

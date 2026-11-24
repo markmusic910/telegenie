@@ -6,6 +6,12 @@ type TransportServiceOptions = {
   debug?: boolean;
 };
 
+type ClientChangeListener = (client: TelegramClient) => void;
+
+function connectionKey(session: string, credentials?: TelegramCredentials): string {
+  return `${session}|${credentials?.apiId ?? ''}|${credentials?.apiHash ?? ''}`;
+}
+
 /**
  * TransportService
  */
@@ -13,6 +19,9 @@ export class TransportService {
   private debug: boolean;
   client: TelegramClient | null = null;
   fileRefEngine?: FileRefEngine;
+  private activeSessionKey: string | undefined;
+  private pendingConnect: { key: string; promise: Promise<void> } | null = null;
+  private readonly clientChangeListeners = new Set<ClientChangeListener>();
 
   constructor({ debug }: TransportServiceOptions = {}) {
     this.debug = debug ?? false;
@@ -24,6 +33,13 @@ export class TransportService {
     }
   }
 
+  subscribeClientChange(listener: ClientChangeListener): () => void {
+    this.clientChangeListeners.add(listener);
+    return () => {
+      this.clientChangeListeners.delete(listener);
+    };
+  }
+
   setFileRefEngine(engine?: FileRefEngine): void {
     this.fileRefEngine = engine;
     if (engine && this.client && typeof this.client.invoke === 'function') {
@@ -32,20 +48,51 @@ export class TransportService {
   }
 
   private connectClient = async (session = '', credentials?: TelegramCredentials) => {
-    this.client = await initClient(session, credentials);
-    if (!this.client.connected) {
-      const connected = await this.client.connect();
+    const prevClient = this.client;
+    const nextClient = await initClient(session, credentials);
+    if (!nextClient.connected) {
+      const connected = await nextClient.connect();
       if (!connected) {
         throw new Error('unable to connect to telegram');
       }
     }
-    if (this.fileRefEngine && typeof this.client.invoke === 'function') {
-      this.fileRefEngine.install(this.client);
+    this.client = nextClient;
+    this.activeSessionKey = connectionKey(session, credentials);
+    if (this.fileRefEngine && typeof nextClient.invoke === 'function') {
+      this.fileRefEngine.install(nextClient);
+    }
+    if (prevClient && prevClient !== nextClient) {
+      if (typeof prevClient.disconnect === 'function') {
+        void prevClient.disconnect().catch(() => {
+          // Ignore disconnect errors on superseded clients.
+        });
+      }
+      for (const listener of this.clientChangeListeners) {
+        try {
+          listener(nextClient);
+        } catch (err) {
+          console.error('[TransportService] clientChange listener error', err);
+        }
+      }
     }
   };
 
   prepareConnection = async (session = '', credentials?: TelegramCredentials) => {
-    await this.connectClient(session, credentials);
+    const key = connectionKey(session, credentials);
+    if (session.trim().length > 0 && this.client?.connected && this.activeSessionKey === key) {
+      this.log('Reusing existing connected TG client');
+      return;
+    }
+    if (this.pendingConnect && this.pendingConnect.key === key) {
+      return this.pendingConnect.promise;
+    }
+    const promise = this.connectClient(session, credentials).finally(() => {
+      if (this.pendingConnect?.promise === promise) {
+        this.pendingConnect = null;
+      }
+    });
+    this.pendingConnect = { key, promise };
+    return promise;
   };
 
   private _initTG = async () => {

@@ -358,7 +358,12 @@ const MessageContextMenuEnabled = observer(function MessageContextMenuEnabled({
               ) : null}
               <div ref={menuMainRef} className="min-w-56 shrink-0 p-1" data-context-menu-main>
                 {message.ttlPeriod ? null : (
-                <div className="flex min-h-9 items-center gap-0.5 px-1">
+                <div
+                  className={cn(
+                    'flex min-h-9 items-center gap-0.5 px-1',
+                    expanded && 'max-w-72 max-h-48 flex-wrap items-start overflow-y-auto py-1',
+                  )}
+                >
                   {!menuReady ? (
                     <span className="px-2 py-1.5 text-xs text-muted-foreground">Loading…</span>
                   ) : (

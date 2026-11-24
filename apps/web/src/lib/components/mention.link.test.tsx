@@ -3,8 +3,13 @@ import { createRoot, type Root } from 'react-dom/client';
 
 import MentionLink from '@/lib/components/mention.link';
 
+const push = jest.fn();
 const selectDialog = jest.fn();
 const selectDialogByUsername = jest.fn().mockResolvedValue(undefined);
+
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({ push }),
+}));
 
 jest.mock('@/lib/contexts/sdk.context', () => ({
   useSDK: () => ({

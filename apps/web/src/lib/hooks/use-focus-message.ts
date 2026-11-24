@@ -1,7 +1,9 @@
 'use client';
 
-import { useSDK } from '@/lib/contexts/sdk.context';
+import { useSDK, useStore } from '@/lib/contexts/sdk.context';
+import { dialogHref } from '@/lib/utils/dialog-url';
 import { MAIN_THREAD_ID } from '@telegenie/sdk';
+import { useRouter } from 'next/navigation';
 import { useCallback } from 'react';
 
 export type FocusMessageParams = {
@@ -14,9 +16,14 @@ export type FocusMessageParams = {
 
 export function useFocusMessage() {
   const sdk = useSDK();
+  const globalStore = useStore('global');
+  const router = useRouter();
 
   return useCallback(
     (params: FocusMessageParams) => {
+      if (globalStore.nav.selectedDialogId !== params.peerId) {
+        router.push(dialogHref(params.peerId));
+      }
       void sdk.messageLoad.focusMessage(params.peerId, {
         messageId: params.messageId,
         threadId: params.threadId ?? MAIN_THREAD_ID,
@@ -24,6 +31,6 @@ export function useFocusMessage() {
         noHighlight: params.noHighlight,
       });
     },
-    [sdk.messageLoad],
+    [globalStore, router, sdk.messageLoad],
   );
 }

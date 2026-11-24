@@ -1,7 +1,10 @@
 'use client';
 
 import { useSDK } from '@/lib/contexts/sdk.context';
+import { useSelectDialog } from '@/lib/hooks/use-select-dialog';
 import { cn } from '@/lib/utils';
+import { dialogHref } from '@/lib/utils/dialog-url';
+import { useRouter } from 'next/navigation';
 import { useCallback, useState } from 'react';
 
 type MentionLinkProps = {
@@ -17,6 +20,8 @@ function normalizeUsername(username: string): string {
 
 export default function MentionLink({ userId, username, children, className }: MentionLinkProps) {
   const sdk = useSDK();
+  const router = useRouter();
+  const selectDialog = useSelectDialog();
   const [busy, setBusy] = useState(false);
   const clickable = Boolean(userId || username);
 
@@ -27,7 +32,7 @@ export default function MentionLink({ userId, username, children, className }: M
       event.stopPropagation();
 
       if (userId) {
-        void sdk.messageLoad.selectDialog(userId);
+        void selectDialog(userId);
         return;
       }
 
@@ -35,11 +40,19 @@ export default function MentionLink({ userId, username, children, className }: M
       if (!normalized) return;
 
       setBusy(true);
-      void sdk.messageLoad.selectDialogByUsername(normalized).finally(() => {
-        setBusy(false);
-      });
+      void sdk.messageLoad
+        .selectDialogByUsername(normalized)
+        .then(() => {
+          const selected = sdk.globalStore?.nav?.selectedDialogId;
+          if (selected) {
+            router.push(dialogHref(selected));
+          }
+        })
+        .finally(() => {
+          setBusy(false);
+        });
     },
-    [busy, clickable, sdk.messageLoad, userId, username],
+    [busy, clickable, router, sdk.globalStore, sdk.messageLoad, selectDialog, userId, username],
   );
 
   if (!clickable) {

@@ -17,6 +17,9 @@ export function createDefaultTelegramWorker(): TelegramWorkerClient {
         type: 'module',
         name: 'telegenie-telegram',
       });
+      shared.addEventListener('error', (event) => {
+        console.error('[TelegramWorker] SharedWorker error:', event);
+      });
       shared.port.start();
       return shared.port;
     },

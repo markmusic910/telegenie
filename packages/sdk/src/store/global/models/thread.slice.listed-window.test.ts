@@ -117,6 +117,25 @@ describe('ThreadSlice listed window', () => {
     expect(global.getThreadUI('7')?.listedIds).toEqual(['99', '100', '101']);
   });
 
+  it('flips listedFollowsNewest to false when syncListedFollowsNewest runs after topMessageId advances', () => {
+    const { sm, global } = setup();
+    global.getOrCreateThreadUI('7').replaceListedWindow(['99', '100']);
+    expect(global.getThreadUI('7')?.listedFollowsNewest).toBe(true);
+
+    sm.get('dialog').update([
+      new Dialog({
+        id: '7',
+        peerId: '7',
+        topMessageId: '105',
+        unreadCount: 0,
+        isFolder: false,
+      } as DialogEntity),
+    ]);
+    global.getOrCreateThreadUI('7').syncListedFollowsNewest();
+    expect(global.getThreadUI('7')?.hasMoreNewer).toBe(true);
+    expect(global.getThreadUI('7')?.listedFollowsNewest).toBe(false);
+  });
+
   it('bumps pendingNewerCount when live ids arrive while scrolled up on the newest window', () => {
     const { global } = setup();
     global.getOrCreateThreadUI('7').replaceListedWindow(['99', '100']);

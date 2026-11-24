@@ -405,6 +405,8 @@ function createWorkerClient(worker) {
       const slot = pending.get(msg.id);
       if (!slot)
         return;
+      if (slot.timer)
+        clearTimeout(slot.timer);
       pending.delete(msg.id);
       if (msg.ok === true) {
         slot.resolve(msg.value);
@@ -431,9 +433,21 @@ function createWorkerClient(worker) {
     call(method, args, options) {
       const id = postCall(method, args, options, false);
       const { promise, resolve, reject } = Promise.withResolvers();
+      const timeoutMs = options?.timeoutMs;
+      let timer;
+      if (typeof timeoutMs === "number" && Number.isFinite(timeoutMs) && timeoutMs > 0) {
+        timer = setTimeout(() => {
+          const slot = pending.get(id);
+          if (!slot)
+            return;
+          pending.delete(id);
+          slot.reject(new RpcError(`RPC timeout after ${timeoutMs}ms`, "RPC_TIMEOUT", "RpcError", String(method)));
+        }, timeoutMs);
+      }
       pending.set(id, {
         resolve,
-        reject
+        reject,
+        timer
       });
       return promise;
     },
@@ -496,6 +510,8 @@ function createWorkerClient(worker) {
     terminate() {
       worker.removeEventListener("message", onMessage);
       for (const [, slot] of pending) {
+        if (slot.timer)
+          clearTimeout(slot.timer);
         slot.reject(new RpcError("Worker terminated", "WORKER_TERMINATED"));
       }
       pending.clear();

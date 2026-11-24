@@ -85,6 +85,41 @@ describe('UpdateManager', () => {
     await emptyDb.deleteDatabase();
   });
 
+  it('rebinds event handler when transportService.client is replaced while started', async () => {
+    const clientA: FakeClient = {
+      invoke: jest.fn().mockResolvedValue(new Api.updates.DifferenceEmpty({ date: 100, seq: 1 })),
+      addEventHandler: jest.fn(),
+      removeEventHandler: jest.fn(),
+    };
+    const clientB: FakeClient = {
+      invoke: jest.fn().mockResolvedValue(new Api.updates.DifferenceEmpty({ date: 101, seq: 1 })),
+      addEventHandler: jest.fn(),
+      removeEventHandler: jest.fn(),
+    };
+    const transport = { client: clientA, debug: false } as unknown as TransportService;
+    const m = new UpdateManager({ transportService: transport, localDb: db });
+
+    await m.start();
+    expect(clientA.addEventHandler).toHaveBeenCalledTimes(1);
+
+    (transport as unknown as { client: FakeClient }).client = clientB;
+    m.rebindClient();
+
+    expect(clientA.removeEventHandler).toHaveBeenCalledTimes(1);
+    expect(clientB.addEventHandler).toHaveBeenCalledTimes(1);
+
+    m.stop();
+    expect(clientB.removeEventHandler).toHaveBeenCalledTimes(1);
+  });
+
+  it('triggers getDifference on start when commonState already exists in localDb', async () => {
+    client.invoke.mockResolvedValue(new Api.updates.DifferenceEmpty({ date: 105, seq: 2 }));
+    await manager.start();
+    // Flush microtasks for non-blocking recoverCommon
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(client.invoke).toHaveBeenCalledWith(expect.any(Api.updates.GetDifference));
+  });
+
   it('dispatches upstream handlers after builtins for UpdateNewMessage', async () => {
     const order: string[] = [];
     manager.on('UpdateNewMessage', async () => {

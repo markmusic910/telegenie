@@ -54,6 +54,8 @@ export function getBrowserWssClientParams(
 ): TelegramClientParams {
   return {
     networkSocket: extensions.PromisedWebSockets,
+    connectionRetries: 5,
+    retryDelay: 1000,
     ...override,
   };
 }

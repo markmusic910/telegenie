@@ -284,7 +284,7 @@ export class MessageLoadController {
   @Method()
   async jumpToBottom(peerId: string, threadId: string = MAIN_THREAD_ID): Promise<void> {
     const threadUI = this.globalStore.getOrCreateThreadUI(peerId, threadId);
-    if (threadUI.listedFollowsNewest) {
+    if (threadUI.listedFollowsNewest && !threadUI.hasMoreNewer) {
       await this.ensureListedIdsCached(peerId, threadId);
       this.finishJumpToBottom(peerId, threadId);
       return;
@@ -388,6 +388,46 @@ export class MessageLoadController {
     await this.selectDialog(peerId, threadId);
   }
 
+  /**
+   * Catch up a dialog that was already selected at startup (from URL or StoreCache)
+   * once server dialog metadata has synced:
+   * - If unread, land on the first unread message (without highlight) + freeze divider.
+   * - If the listed window is empty and not loaded yet, load around latest via `selectDialog`.
+   * - If pinned to bottom and `topMessageId` moved ahead of `listedIds`, jump to bottom.
+   */
+  @RequestLog()
+  @Method()
+  async syncRestoredSelectedDialog(peerId: string): Promise<void> {
+    if (this.globalStore.nav.selectedDialogId !== peerId) return;
+    const dialogUI = this.globalStore.getDialogUI(peerId);
+    const threadId = dialogUI?.activeThreadId ?? MAIN_THREAD_ID;
+    const threadUI = this.globalStore.getThreadUI(peerId, threadId);
+
+    if (this.loadUnreadReactionsOnOpen) {
+      void this.loadUnreadReactionsOnOpen(peerId).catch(() => undefined);
+    }
+
+    const unreadId = this.resolveOpenUnreadFocusId(peerId, threadId);
+    if (unreadId) {
+      await this.applyFocus(peerId, threadId, unreadId, { noHighlight: true });
+      this.globalStore.getOrCreateThreadUI(peerId, threadId).freezeUnreadDivider();
+      return;
+    }
+
+    if (!threadUI || (!threadUI.historyLoaded && threadUI.listedIds.length === 0)) {
+      await this.selectDialog(peerId, threadId);
+      return;
+    }
+
+    if (threadUI.pinToBottom && threadUI.hasMoreNewer) {
+      await this.jumpToBottom(peerId, threadId);
+      this.globalStore.getOrCreateThreadUI(peerId, threadId).freezeUnreadDivider();
+      return;
+    }
+
+    threadUI.freezeUnreadDivider();
+  }
+
   @RequestLog()
   @Method()
   async selectDialog(peerId: string, threadId: string = MAIN_THREAD_ID): Promise<void> {
@@ -417,9 +457,16 @@ export class MessageLoadController {
 
     // Already have a listed window — keep it, do not rebuild around latest.
     // Re-freeze so a reopen with no unreads clears last session's divider.
+    // If pinned to bottom and topMessageId moved ahead (e.g. after getAllDialogs),
+    // catch up to the newest messages instead of staying stale.
     // Persist / reconcile can leave listedIds that are no longer in cachedIds;
     // fetch those so the scroller has entities to render.
     if (Boolean(threadUI?.historyLoaded) || (threadUI?.listedIds.length ?? 0) > 0) {
+      if (threadUI?.pinToBottom && threadUI.hasMoreNewer) {
+        await this.jumpToBottom(peerId, threadId);
+        this.globalStore.getOrCreateThreadUI(peerId, threadId).freezeUnreadDivider();
+        return;
+      }
       this.globalStore.getOrCreateThreadUI(peerId, threadId).freezeUnreadDivider();
       await this.ensureListedIdsCached(peerId, threadId);
       return;

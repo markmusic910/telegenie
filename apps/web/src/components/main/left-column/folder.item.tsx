@@ -8,6 +8,7 @@ import { Badge } from '@/lib/components/ui/badge';
 import { useSDK, useStore } from '@/lib/contexts/sdk.context';
 import { useFolderDialogIds } from '@/lib/hooks/use-folder-dialog-ids';
 import { cn } from '@/lib/utils';
+import { dialogHref } from '@/lib/utils/dialog-url';
 import { FolderGlyph, FolderTitleText } from './folder.meta';
 
 export const FOLDER_ITEM_ESTIMATE_PX = 64;
@@ -44,8 +45,8 @@ const FolderItem = observer(
           title={filter.title}
           onClick={() => {
             sdk.dialogFilter.selectFolder(folderId);
-            if (pathname.startsWith('/settings')) {
-              router.push('/');
+            if (pathname.startsWith('/settings') || pathname.startsWith('/contacts')) {
+              router.push(dialogHref(globalStore.nav.selectedDialogId));
             }
           }}
           className={cn(

@@ -90,7 +90,31 @@ export type TeleGenieSDKInitOptions = TelegramCredentials & {
   apiBaseUrl?: string;
   /** Backend bot username. */
   backendBotUsername?: string;
+  /** Dialog ID from the initial URL path; takes precedence over persisted local state. */
+  initialDialogId?: string;
 };
+
+const STORE_CACHE_OPEN_TIMEOUT_MS = 10_000;
+const ACCOUNT_OPEN_TIMEOUT_MS = 15_000;
+const AUTH_CONFIGURE_TIMEOUT_MS = 10_000;
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
 
 const MESSAGE_STORE_SUFFIX = '-message';
 
@@ -129,6 +153,8 @@ export class TeleGenieSDK {
 
   private _initialized = false;
   private _accountSlot = 'default';
+  private initPromise: Promise<this> | null = null;
+  private pendingInitialDialogSync: string | undefined;
   private readonly debug: boolean;
   private readonly worker: TelegramWorkerClient;
   private storeCache: StoreCache | undefined;
@@ -172,6 +198,17 @@ export class TeleGenieSDK {
       debug: this.debug,
       worker: this.worker,
       ensureMessageStore,
+      globalStore: this.globalStore,
+      onSelectedDialogSynced: (peerId) => {
+        if (this.pendingInitialDialogSync === peerId) {
+          this.pendingInitialDialogSync = undefined;
+          void this.messageLoad.syncRestoredSelectedDialog(peerId).catch((err) => {
+            if (this.debug) {
+              console.warn('[TeleGenieSDK] syncRestoredSelectedDialog failed', err);
+            }
+          });
+        }
+      },
     });
     this.dialogFilter = new DialogFilterController({
       sm: this.store,
@@ -416,11 +453,25 @@ export class TeleGenieSDK {
    * subscribe to LocalDb peer changes, then optionally restore the auth session.
    */
   async init(options: TeleGenieSDKInitOptions): Promise<this> {
+    if (this.initPromise) {
+      return this.initPromise;
+    }
+    const run = this.runInit(options).finally(() => {
+      if (this.initPromise === run) {
+        this.initPromise = null;
+      }
+    });
+    this.initPromise = run;
+    return run;
+  }
+
+  private async runInit(options: TeleGenieSDKInitOptions): Promise<this> {
     const {
       restoreSession = true,
       accountSlot = 'default',
       apiBaseUrl,
       backendBotUsername,
+      initialDialogId,
       ...credentials
     } = options;
     this._accountSlot = accountSlot;
@@ -431,57 +482,86 @@ export class TeleGenieSDK {
       this.auth.setBackendBotUsername(backendBotUsername);
     }
 
-    this.sw.init();
+    if (this.globalStore.auth.authStep === 'error') {
+      this.globalStore.auth.setAuthError(null);
+      this.globalStore.auth.setAuthStep('idle');
+    }
 
-    await this.openStoreCache(accountSlot);
-    await this.recoverFromCache();
-    // Before any network call, so the folder rail always has something to render.
-    this.dialogFilter.seedDefaults();
+    try {
+      this.sw.init();
 
-    // Connect SharedWorker (first RPC / explicit connect happens below).
-    await this.worker.call('account.open', [{ accountSlot }]);
-    this.unsubscribeEntityChanges?.();
-    this.unsubscribeEntityChanges = this.worker.on('entityChange', (change) => {
-      this.handleLocalDbEntityChange(change);
-    });
-    this.unsubscribeStoreUpdates?.();
-    this.unsubscribeStoreUpdates = this.worker.on('storeUpdate', (payload) => {
-      this.updates.apply(payload);
-    });
-    this.unsubscribeDialogOrder?.();
-    this.unsubscribeDialogOrder = this.worker.on('dialogOrder', (payload) => {
-      this.globalStore.nav.setSortedDialogIds(payload.ids, payload.allIds);
-    });
+      await withTimeout(
+        this.openStoreCache(accountSlot),
+        STORE_CACHE_OPEN_TIMEOUT_MS,
+        'StoreCache.open',
+      );
+      await this.recoverFromCache();
+      if (initialDialogId) {
+        this.globalStore.nav.setSelectedDialogId(initialDialogId);
+      }
+      this.pendingInitialDialogSync = this.globalStore.nav.selectedDialogId;
 
-    this.tabLeader.dispose();
-    this.sw.disconnectLeaderBridges();
-    this.tabLeader = new TabLeaderElection({
-      globalStore: this.globalStore,
-      broadcast: this.broadcast,
-    });
-    const isLeader = await this.tabLeader.start();
-    this.watchPersistLeadership();
-    if (isLeader) {
-      await this.sw.connectLeaderBridges(this.worker);
-      this.sw.watchControllerChange(() => {
-        void this.sw.connectLeaderBridges(this.worker);
+      // Before any network call, so the folder rail always has something to render.
+      this.dialogFilter.seedDefaults();
+
+      // Connect SharedWorker (first RPC / explicit connect happens below).
+      await this.worker.call('account.open', [{ accountSlot }], {
+        timeoutMs: ACCOUNT_OPEN_TIMEOUT_MS,
       });
+      this.unsubscribeEntityChanges?.();
+      this.unsubscribeEntityChanges = this.worker.on('entityChange', (change) => {
+        this.handleLocalDbEntityChange(change);
+      });
+      this.unsubscribeStoreUpdates?.();
+      this.unsubscribeStoreUpdates = this.worker.on('storeUpdate', (payload) => {
+        this.updates.apply(payload);
+      });
+      this.unsubscribeDialogOrder?.();
+      this.unsubscribeDialogOrder = this.worker.on('dialogOrder', (payload) => {
+        this.globalStore.nav.setSortedDialogIds(payload.ids, payload.allIds);
+      });
+
+      this.tabLeader.dispose();
+      this.sw.disconnectLeaderBridges();
+      this.tabLeader = new TabLeaderElection({
+        globalStore: this.globalStore,
+        broadcast: this.broadcast,
+      });
+      const isLeader = await this.tabLeader.start();
+      this.watchPersistLeadership();
+      if (isLeader) {
+        await this.sw.connectLeaderBridges(this.worker);
+        this.sw.watchControllerChange(() => {
+          void this.sw.connectLeaderBridges(this.worker);
+        });
+      }
+
+      // Per-tab agent ↔ page bridge (TabPageApi host on this tab).
+      await this.agent.connectPageBridge();
+      void this.agent.ensureModelConfigured().catch((err) => {
+        console.warn('[SDK] Initial agent model configuration deferred:', err);
+      });
+
+      await this.worker.call('auth.configure', [credentials], {
+        timeoutMs: AUTH_CONFIGURE_TIMEOUT_MS,
+      });
+
+      if (restoreSession) {
+        await this.auth.tryRestoreSession();
+      }
+
+      this._initialized = true;
+      return this;
+    } catch (err) {
+      const message =
+        err instanceof Error && err.message.length > 0
+          ? err.message
+          : 'Failed to initialize TeleGenie';
+      this.globalStore.auth.setAuthError(message);
+      this.globalStore.auth.setAuthLoading(false);
+      this.globalStore.auth.setAuthStep('error');
+      return this;
     }
-
-    // Per-tab agent ↔ page bridge (TabPageApi host on this tab).
-    await this.agent.connectPageBridge();
-    void this.agent.ensureModelConfigured().catch((err) => {
-      console.warn('[SDK] Initial agent model configuration deferred:', err);
-    });
-
-    await this.auth.configure(credentials);
-
-    if (restoreSession) {
-      await this.auth.tryRestoreSession();
-    }
-
-    this._initialized = true;
-    return this;
   }
 
   private async onAuthSuccess(): Promise<void> {
@@ -517,6 +597,20 @@ export class TeleGenieSDK {
     } catch (err) {
       if (this.debug) {
         console.warn('[TeleGenieSDK] authenticateBackend failed', err);
+      }
+    }
+    // If an initial dialog was selected from URL/cache with no cached listed window yet,
+    // kick off loading immediately without waiting for getAllDialogs to page down to it.
+    const initialPeerId = this.pendingInitialDialogSync;
+    if (initialPeerId) {
+      const dialogUI = this.globalStore.getDialogUI(initialPeerId);
+      const threadUI = this.globalStore.getThreadUI(initialPeerId, dialogUI?.activeThreadId);
+      if (!threadUI || (!threadUI.historyLoaded && threadUI.listedIds.length === 0)) {
+        void this.messageLoad.selectDialog(initialPeerId).catch((err) => {
+          if (this.debug) {
+            console.warn('[TeleGenieSDK] initial selectDialog failed', err);
+          }
+        });
       }
     }
   }

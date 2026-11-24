@@ -300,6 +300,11 @@ export class ThreadSlice extends GlobalStoreSlice implements ThreadUIState {
     this.listedFollowsNewest = follows;
   }
 
+  /** Recompute `listedFollowsNewest` against current `dialog.topMessageId` (e.g. after `getAllDialogs`). */
+  syncListedFollowsNewest() {
+    this.syncListedWindowFlags();
+  }
+
   setPendingNewerCount(count: number) {
     this.pendingNewerCount = count;
   }

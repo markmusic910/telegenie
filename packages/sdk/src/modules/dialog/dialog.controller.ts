@@ -1,6 +1,8 @@
 import { Controller, Method, RequestLog } from '@telegenie/decorators';
 import type { TelegramWorkerClient } from '@telegenie/libs/foundation/telegram/worker';
 import { Dialog } from '@telegenie/sdk/store/entity/models/dialog.model';
+import type GlobalStore from '@telegenie/sdk/store/global/global.store';
+import { MAIN_THREAD_ID } from '@telegenie/sdk/store/global/models/thread.state';
 import type StoreManager from '@telegenie/sdk/store/store.manager';
 import type { MessageStore } from '@telegenie/sdk/store/types';
 import { ConversionService } from '../common/services/convert.service';
@@ -11,6 +13,8 @@ type DialogControllerOptions = {
   debug?: boolean;
   worker: TelegramWorkerClient;
   ensureMessageStore: (peerId: string) => MessageStore;
+  globalStore?: GlobalStore;
+  onSelectedDialogSynced?: (peerId: string) => void;
 };
 
 function uniqById<T extends { id: any }>(items: T[]): T[] {
@@ -34,14 +38,25 @@ export class DialogController {
   sm: StoreManager;
   converter: ConversionService;
   private readonly ensureMessageStore: (peerId: string) => MessageStore;
+  private readonly globalStore: GlobalStore | undefined;
+  private readonly onSelectedDialogSynced: ((peerId: string) => void) | undefined;
 
-  constructor({ sm, debug, worker, ensureMessageStore }: DialogControllerOptions) {
+  constructor({
+    sm,
+    debug,
+    worker,
+    ensureMessageStore,
+    globalStore,
+    onSelectedDialogSynced,
+  }: DialogControllerOptions) {
     this.converter = new ConversionService({
       debug: debug ?? false,
     });
     this.worker = worker;
     this.sm = sm;
     this.ensureMessageStore = ensureMessageStore;
+    this.globalStore = globalStore;
+    this.onSelectedDialogSynced = onSelectedDialogSynced;
   }
 
   /**
@@ -79,6 +94,24 @@ export class DialogController {
       ]);
       if (dialogEntities.length > 0) {
         this.sm.get('dialog').update(dialogEntities);
+        if (this.globalStore) {
+          const selectedId = this.globalStore.nav.selectedDialogId;
+          let matchedSelected = false;
+          for (const entity of dialogEntities) {
+            if (entity.isFolder) continue;
+            const peerId = entity.peerId || String(entity.id);
+            const threadUI = this.globalStore.getThreadUI(peerId, MAIN_THREAD_ID);
+            if (threadUI && threadUI.listedIds.length > 0) {
+              threadUI.syncListedFollowsNewest();
+            }
+            if (selectedId && peerId === selectedId) {
+              matchedSelected = true;
+            }
+          }
+          if (matchedSelected && selectedId) {
+            this.onSelectedDialogSynced?.(selectedId);
+          }
+        }
       }
 
       const chatEntities = uniqById([
