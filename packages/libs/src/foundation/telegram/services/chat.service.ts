@@ -109,6 +109,7 @@ export class ChatService {
    */
   getFullChatByIds = async (
     ids: string[],
+    options?: { forceRefresh?: boolean },
   ): Promise<{
     fullChats: Record<string, ChatFull>;
     chats: Record<string, Chat>;
@@ -122,7 +123,7 @@ export class ChatService {
     const misses: string[] = [];
 
     for (const id of ids) {
-      const local = await this.localDb?.getChatFull(id);
+      const local = options?.forceRefresh ? undefined : await this.localDb?.getChatFull(id);
       if (local) {
         fullChats[local.id] = local;
       } else {

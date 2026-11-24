@@ -1,4 +1,7 @@
-import type { CustomEmojiEntity } from '@telegenie/libs/foundation/telegram/services/message.service';
+import type {
+  CustomEmojiEntity,
+  OutgoingMessageEntity,
+} from '@telegenie/libs/foundation/telegram/services/message.service';
 import { Dialog } from '../../store/entity/models/dialog.model';
 import type { MessageDraft } from '../../store/global/models/thread.state';
 
@@ -10,6 +13,33 @@ export function customEmojiEntities(
     if (!('documentId' in entity) || typeof entity.documentId !== 'string') return [];
     return [{ offset: entity.offset, length: entity.length, documentId: entity.documentId }];
   });
+  return next.length ? next : undefined;
+}
+
+export function outgoingMessageEntities(
+  entities: MessageDraft['entities'],
+): OutgoingMessageEntity[] | undefined {
+  const next: OutgoingMessageEntity[] = [];
+  for (const entity of entities ?? []) {
+    if (
+      entity.className === 'MessageEntityCustomEmoji' &&
+      'documentId' in entity &&
+      typeof entity.documentId === 'string'
+    ) {
+      next.push({ offset: entity.offset, length: entity.length, documentId: entity.documentId });
+    } else if (
+      entity.className === 'MessageEntityMentionName' &&
+      'userId' in entity &&
+      typeof entity.userId === 'string'
+    ) {
+      next.push({
+        offset: entity.offset,
+        length: entity.length,
+        userId: entity.userId,
+        className: 'MessageEntityMentionName',
+      });
+    }
+  }
   return next.length ? next : undefined;
 }
 

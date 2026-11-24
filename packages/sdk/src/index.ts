@@ -14,6 +14,8 @@ export {
 } from '@telegenie/libs/foundation/telegram/media/peer-avatar-url';
 export type {
   CustomEmojiEntity,
+  MentionNameEntity,
+  OutgoingMessageEntity,
   SendStickerDocument,
 } from '@telegenie/libs/foundation/telegram/services/message.service';
 export type {

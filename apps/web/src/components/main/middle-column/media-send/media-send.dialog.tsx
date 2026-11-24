@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils';
 import { formatDuration } from '@/lib/utils/format';
 import { convertCoverToJpeg } from '@/lib/utils/image.util';
 import { AlbumRectPart, calculateAlbumLayout } from '@/lib/utils/media-layout';
-import type { CustomEmojiEntity, MessageAlbum } from '@telegenie/sdk';
+import type { MessageAlbum, OutgoingMessageEntity } from '@telegenie/sdk';
 import {
   ArrowDown,
   ArrowUp,
@@ -41,11 +41,11 @@ export interface MediaSendDialogProps {
   peerId: string;
   threadId?: string;
   initialCaption?: string;
-  initialEntities?: CustomEmojiEntity[];
+  initialEntities?: OutgoingMessageEntity[];
   onSent?: () => void;
 }
 
-const EMPTY_ENTITIES: CustomEmojiEntity[] = [];
+const EMPTY_ENTITIES: OutgoingMessageEntity[] = [];
 
 function getCornerRounding(sides: number) {
   return cn(
@@ -79,7 +79,7 @@ export default function MediaSendDialog({
   const [items, setItems] = useState<File[]>(fileList);
   const [activeIndex, setActiveIndex] = useState(0);
   const [caption, setCaption] = useState(initialCaption);
-  const [entities, setEntities] = useState<CustomEmojiEntity[]>(initialEntities);
+  const [entities, setEntities] = useState<OutgoingMessageEntity[]>(initialEntities);
   const [invertMedia, setInvertMedia] = useState(false);
 
   // Per-file spoilers and video covers

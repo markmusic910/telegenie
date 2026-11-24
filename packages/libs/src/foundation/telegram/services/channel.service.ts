@@ -1,7 +1,8 @@
+import bigint from 'big-integer';
 import { Api } from '@telegenie/teleproto';
 import to from 'await-to-js';
 import { chunk } from 'lodash-es';
-import { buildInputEntity, buildInputPeer } from '../helpers';
+import { buildInputEntity, buildInputPeer, buildMarkedPeerIdByType } from '../helpers';
 import { sleep } from '../../../utils/scheduler/sleep';
 import type { LocalDb } from '../local-db/local-db';
 import type { UpdateManager } from '../update-manager/update-manager';
@@ -325,5 +326,103 @@ export class ChannelService {
   /** Read a channel from LocalDb only (no network). */
   getLocalChannel = async (id: string): Promise<Channel | undefined> => {
     return this.localDb?.getChannel(id);
+  };
+
+  /**
+   * Fetch supergroup/channel participants (recent or search by query).
+   * Returns an empty result when participants are hidden or inaccessible.
+   */
+  getParticipants = async (
+    channelId: string,
+    options?: {
+      q?: string;
+      offset?: number;
+      limit?: number;
+      accessHash?: string;
+    },
+  ): Promise<{
+    participantIds: string[];
+    users: Record<string, User>;
+    count: number;
+  }> => {
+    if (!this.client) {
+      throw new Error('Client not initialized');
+    }
+
+    let hash = options?.accessHash;
+    if (!hash) {
+      const row = await this.localDb?.getChannelRow(channelId);
+      hash = row?.entity.accessHash;
+    }
+    if (!hash) {
+      return { participantIds: [], users: {}, count: 0 };
+    }
+
+    const query = options?.q?.trim() ?? '';
+    const filter = query
+      ? new Api.ChannelParticipantsSearch({ q: query })
+      : new Api.ChannelParticipantsRecent();
+
+    let result: Api.channels.TypeChannelParticipants;
+    try {
+      result = await this.client.invoke(
+        new Api.channels.GetParticipants({
+          channel: buildInputEntity(channelId, hash) as Api.InputChannel,
+          filter,
+          offset: options?.offset ?? 0,
+          limit: options?.limit ?? 200,
+          hash: bigint(0),
+        }),
+      );
+    } catch (err) {
+      const msg = String(
+        (err as { errorMessage?: string; message?: string })?.errorMessage ??
+          (err as Error)?.message ??
+          '',
+      );
+      if (
+        msg.includes('CHAT_ADMIN_REQUIRED') ||
+        msg.includes('CHANNEL_PRIVATE') ||
+        msg.includes('CHANNEL_INVALID') ||
+        msg.includes('PARTICIPANTS_TOO_FEW')
+      ) {
+        return { participantIds: [], users: {}, count: 0 };
+      }
+      throw err;
+    }
+
+    if (!(result instanceof Api.channels.ChannelParticipants)) {
+      return { participantIds: [], users: {}, count: 0 };
+    }
+
+    const users: Record<string, User> = {};
+    const convertedUsers: User[] = [];
+    for (const entry of result.users ?? []) {
+      if (entry instanceof Api.User) {
+        const converted = convertUser(entry);
+        users[converted.id] = converted;
+        convertedUsers.push(converted);
+      }
+    }
+
+    await persistPeers(this.localDb, { users: convertedUsers });
+
+    const participantIds: string[] = [];
+    const seen = new Set<string>();
+    for (const participant of result.participants ?? []) {
+      if ('userId' in participant && participant.userId != null) {
+        const id = buildMarkedPeerIdByType(participant.userId.toString(), 'user');
+        if (id && !seen.has(id)) {
+          seen.add(id);
+          participantIds.push(id);
+        }
+      }
+    }
+
+    return {
+      participantIds,
+      users,
+      count: result.count ?? participantIds.length,
+    };
   };
 }

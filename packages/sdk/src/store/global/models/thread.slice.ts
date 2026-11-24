@@ -1,3 +1,4 @@
+import type { TypeMessageEntity } from '@telegenie/libs/foundation/telegram/types/api-types';
 import { observable } from 'mobx';
 import type { Channel } from '../../entity/models/channel.model';
 import type { Dialog } from '../../entity/models/dialog.model';
@@ -64,6 +65,7 @@ export class ThreadSlice extends GlobalStoreSlice implements ThreadUIState {
   draft?: MessageDraft;
   editingId?: string;
   editingText?: string;
+  editingEntities?: TypeMessageEntity[];
   replyingToId?: string;
   /** Session-only. Omitted from {@link toSnapshot}. */
   forwarding?: StagedForward;
@@ -122,7 +124,13 @@ export class ThreadSlice extends GlobalStoreSlice implements ThreadUIState {
   get hasMoreNewer(): boolean {
     const listedMax = this.listedIds[this.listedIds.length - 1];
     const topId = this.ctx.getTopMessageId();
-    return Boolean(listedMax && topId && listedMax !== topId);
+    if (!listedMax || !topId) return false;
+    const listedNum = Number(listedMax);
+    const topNum = Number(topId);
+    if (Number.isFinite(listedNum) && Number.isFinite(topNum)) {
+      return listedNum < topNum;
+    }
+    return listedMax !== topId;
   }
 
   get flatItems(): FlatListItem[] {
@@ -170,6 +178,10 @@ export class ThreadSlice extends GlobalStoreSlice implements ThreadUIState {
 
   setEditingText(text: string | undefined) {
     this.editingText = text;
+  }
+
+  setEditingEntities(entities: TypeMessageEntity[] | undefined) {
+    this.editingEntities = entities;
   }
 
   setReplyingToId(messageId: string | undefined) {
@@ -599,6 +611,7 @@ export class ThreadSlice extends GlobalStoreSlice implements ThreadUIState {
       draft: this.draft,
       editingId: this.editingId,
       editingText: this.editingText,
+      editingEntities: this.editingEntities,
       replyingToId: this.replyingToId,
       replyStack: this.replyStack.slice(),
       focusedMessageId: this.focusedMessageId,
@@ -639,6 +652,7 @@ export class ThreadSlice extends GlobalStoreSlice implements ThreadUIState {
     this.draft = snapshot.draft;
     this.editingId = snapshot.editingId;
     this.editingText = snapshot.editingText;
+    this.editingEntities = snapshot.editingEntities;
     this.replyingToId = snapshot.replyingToId;
     this.replyStack = snapshot.replyStack ? [...snapshot.replyStack] : [];
     this.focusedMessageId = snapshot.focusedMessageId;

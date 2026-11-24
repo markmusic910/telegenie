@@ -112,8 +112,8 @@ export function createTelegramWorkerHandlers(
     'chat.getChatsByIds': async (ids) => {
       return tg.getChatService().getChatsByIds(ids);
     },
-    'chat.getFullChatByIds': async (ids) => {
-      return tg.getChatService().getFullChatByIds(ids);
+    'chat.getFullChatByIds': async (ids, options) => {
+      return tg.getChatService().getFullChatByIds(ids, options);
     },
     'chat.createBasicGroup': async (title, users) => {
       return tg.getChatService().createBasicGroup(title, users);
@@ -139,12 +139,21 @@ export function createTelegramWorkerHandlers(
     'channel.exportInviteLink': async (channelId, accessHash) => {
       return tg.getChannelService().exportInviteLink(channelId, accessHash);
     },
+    'channel.getParticipants': async (channelId, options) => {
+      return tg.getChannelService().getParticipants(channelId, options);
+    },
 
     'user.getMe': async () => {
       return tg.getUserService().getMe();
     },
     'user.getContacts': async () => {
       return tg.getUserService().getContacts();
+    },
+    'user.getTopInlineBots': async (limit) => {
+      return tg.getUserService().getTopInlineBots(limit);
+    },
+    'user.searchContacts': async (q, limit) => {
+      return tg.getUserService().searchContacts(q, limit);
     },
     'user.getUsers': async (options) => {
       return tg.getUserService().getUsers(options);
@@ -205,9 +214,9 @@ export function createTelegramWorkerHandlers(
         .getMessageService()
         .sendMessage(peer, message, scheduleTime, replyToMsgId, entities);
     },
-    'message.editMessage': async (peerId, messageId, message, accessHash) => {
+    'message.editMessage': async (peerId, messageId, message, accessHash, entities) => {
       const peer = buildInputPeer(peerId, accessHash);
-      await tg.getMessageService().editMessage(peer, messageId, message);
+      await tg.getMessageService().editMessage(peer, messageId, message, entities);
     },
     'message.forwardMessages': async (
       fromPeerId,

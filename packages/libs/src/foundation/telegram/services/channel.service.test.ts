@@ -18,12 +18,13 @@ type FakeClient = {
 
 function createService(
   client: FakeClient | null,
-  options: { debug?: boolean; updateManager?: UpdateManager } = {},
+  options: { debug?: boolean; updateManager?: UpdateManager; localDb?: unknown } = {},
 ): ChannelService {
   return new ChannelService({
     debug: options.debug,
     transportService: { client, debug: false } as unknown as TransportService,
     updateManager: options.updateManager,
+    localDb: options.localDb as never,
   });
 }
 
@@ -273,5 +274,77 @@ describe('ChannelService logging', () => {
     (createService(null) as never as { log: (...args: unknown[]) => void }).log('hello');
     expect(info).not.toHaveBeenCalled();
     info.mockRestore();
+  });
+});
+
+describe('ChannelService.getParticipants', () => {
+  it('fetches recent participants and persists returned users', async () => {
+    const alice = new Api.User({ id: bigInt(42), firstName: 'Alice', accessHash: bigInt(999) });
+    const client: FakeClient = {
+      invoke: jest.fn().mockResolvedValue(
+        new Api.channels.ChannelParticipants({
+          count: 1,
+          participants: [new Api.ChannelParticipant({ userId: bigInt(42), date: 1 })],
+          chats: [],
+          users: [alice],
+        }),
+      ),
+    };
+    const localDb = {
+      getChannelRow: jest.fn().mockResolvedValue({ entity: { accessHash: '555' } }),
+      putUsers: jest.fn().mockResolvedValue(undefined),
+      putChats: jest.fn().mockResolvedValue(undefined),
+      putChannels: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const result = await createService(client, { localDb: localDb as never }).getParticipants(
+      '-1000000000009',
+    );
+
+    const request = client.invoke.mock.calls[0][0] as Api.channels.GetParticipants;
+    expect(request).toBeInstanceOf(Api.channels.GetParticipants);
+    expect(request.filter).toBeInstanceOf(Api.ChannelParticipantsRecent);
+    expect(result.participantIds).toEqual(['42']);
+    expect(result.count).toBe(1);
+    expect(result.users['42']).toMatchObject({ id: '42', firstName: 'Alice' });
+    expect(localDb.putUsers).toHaveBeenCalled();
+  });
+
+  it('uses ChannelParticipantsSearch when query is provided', async () => {
+    const client: FakeClient = {
+      invoke: jest.fn().mockResolvedValue(
+        new Api.channels.ChannelParticipants({
+          count: 0,
+          participants: [],
+          chats: [],
+          users: [],
+        }),
+      ),
+    };
+
+    await createService(client).getParticipants('-1000000000009', {
+      q: 'alice',
+      accessHash: '555',
+      limit: 50,
+    });
+
+    const request = client.invoke.mock.calls[0][0] as Api.channels.GetParticipants;
+    expect(request.filter).toBeInstanceOf(Api.ChannelParticipantsSearch);
+    expect((request.filter as Api.ChannelParticipantsSearch).q).toBe('alice');
+    expect(request.limit).toBe(50);
+  });
+
+  it('returns empty result on CHAT_ADMIN_REQUIRED', async () => {
+    const client: FakeClient = {
+      invoke: jest.fn().mockRejectedValue({ errorMessage: 'CHAT_ADMIN_REQUIRED' }),
+    };
+
+    await expect(
+      createService(client).getParticipants('-1000000000009', { accessHash: '555' }),
+    ).resolves.toEqual({
+      participantIds: [],
+      users: {},
+      count: 0,
+    });
   });
 });

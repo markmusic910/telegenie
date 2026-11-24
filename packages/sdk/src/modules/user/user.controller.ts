@@ -19,6 +19,8 @@ export class UserController {
   worker: TelegramWorkerClient;
   sm: StoreManager;
   converter: ConversionService;
+  private topInlineBotIdsCache?: string[];
+  private topInlineBotsInFlight?: Promise<string[]>;
 
   constructor({ sm, debug, worker }: UserControllerOptions) {
     this.converter = new ConversionService({
@@ -154,6 +156,60 @@ export class UserController {
     }
 
     return result.peerId;
+  }
+
+  /**
+   * Fetch top inline bots and hydrate returned users into the user store.
+   * Cached for the session with in-flight deduplication.
+   */
+  @RequestLog()
+  @Method()
+  async getTopInlineBots(forceRefresh = false): Promise<string[]> {
+    if (!forceRefresh && this.topInlineBotIdsCache) {
+      return this.topInlineBotIdsCache;
+    }
+    if (!forceRefresh && this.topInlineBotsInFlight) {
+      return this.topInlineBotsInFlight;
+    }
+
+    const run = (async (): Promise<string[]> => {
+      const { userIds, users } = await this.worker.call('user.getTopInlineBots', [20]);
+      if (Object.keys(users).length > 0 && this.sm.has('user')) {
+        this.sm
+          .get('user')
+          .update(
+            this.converter.convertUsers(Object.values(users)).map((entity) => new User(entity)),
+          );
+      }
+      this.topInlineBotIdsCache = userIds;
+      return userIds;
+    })();
+
+    this.topInlineBotsInFlight = run;
+    try {
+      return await run;
+    } finally {
+      this.topInlineBotsInFlight = undefined;
+    }
+  }
+
+  /**
+   * Search remote users/bots via `contacts.search` and hydrate returned users into the user store.
+   */
+  @RequestLog()
+  @Method()
+  async searchContacts(q: string, limit: number = 20): Promise<string[]> {
+    const query = q.trim();
+    if (!query) return [];
+    const { userIds, users } = await this.worker.call('user.searchContacts', [query, limit]);
+    if (Object.keys(users).length > 0 && this.sm.has('user')) {
+      this.sm
+        .get('user')
+        .update(
+          this.converter.convertUsers(Object.values(users)).map((entity) => new User(entity)),
+        );
+    }
+    return userIds;
   }
 
   private findPeerIdByUsername(username: string): string | undefined {

@@ -1,7 +1,7 @@
 import { Controller, Method, RequestLog } from '@telegenie/decorators';
 import type {
-  CustomEmojiEntity,
   ForwardMessagesOptions,
+  OutgoingMessageEntity,
   SendStickerDocument,
   UpdatePinnedMessageOptions,
 } from '@telegenie/libs/foundation/telegram/services/message.service';
@@ -23,7 +23,7 @@ import type { PeerType } from '../../store/types/common';
 import type { MessageEntity } from '../../store/types/message';
 import type { MessageStore } from '../../store/types/store';
 import type { MessageDraftController } from './message-draft.controller';
-import { customEmojiEntities } from './message-draft.utils';
+import { outgoingMessageEntities } from './message-draft.utils';
 
 export type SendFileOptions = {
   forceDocument?: boolean;
@@ -31,7 +31,7 @@ export type SendFileOptions = {
   spoiler?: boolean;
   invertMedia?: boolean;
   videoCover?: File;
-  entities?: CustomEmojiEntity[];
+  entities?: OutgoingMessageEntity[];
   uploadId?: string;
   width?: number;
   height?: number;
@@ -56,7 +56,7 @@ export type SendMediaGroupItem = {
 export type SendMediaGroupOptions = {
   threadId?: string;
   caption?: string;
-  entities?: CustomEmojiEntity[];
+  entities?: OutgoingMessageEntity[];
   invertMedia?: boolean;
   onProgress?: (event: SendMultiMediaWorkerProgressEvent) => void;
   abortSignal?: AbortSignal;
@@ -98,7 +98,7 @@ export class MessageSendController {
     accessHash?: string,
     scheduleTime?: number,
     replyToMsgId?: number,
-    entities?: ReturnType<typeof customEmojiEntities>,
+    entities?: OutgoingMessageEntity[],
   ): Promise<number> {
     if (entities) {
       return this.options.worker.call('message.sendMessage', [
@@ -131,7 +131,7 @@ export class MessageSendController {
     const replyNum = replyRaw != null ? Number(replyRaw) : Number.NaN;
     const replyToMsgId = Number.isInteger(replyNum) && replyNum > 0 ? replyNum : undefined;
     const saveInFlight = this.options.drafts.overlappingSave(peerId, threadId);
-    const entities = customEmojiEntities(
+    const entities = outgoingMessageEntities(
       this.options.globalStore.getThreadUI(peerId, threadId)?.draft?.entities,
     );
 
@@ -166,8 +166,14 @@ export class MessageSendController {
     const id = Number(messageId);
     if (!Number.isInteger(id) || id <= 0) return { ok: false };
     const accessHash = readPeerAccessHash(this.options.sm, peerId);
+    const entities = outgoingMessageEntities(
+      this.options.globalStore.getThreadUI(peerId, threadId)?.editingEntities,
+    );
     try {
-      await this.options.worker.call('message.editMessage', [peerId, id, text, accessHash]);
+      await this.options.worker.call(
+        'message.editMessage',
+        entities ? [peerId, id, text, accessHash, entities] : [peerId, id, text, accessHash],
+      );
     } catch {
       return { ok: false };
     }
@@ -604,14 +610,25 @@ export class MessageSendController {
         message: i === 0 ? (options?.caption ?? '') : '',
         invertMedia: options?.invertMedia ?? item.invertMedia,
         entities: (i === 0 && options?.entities
-          ? options.entities.map((e: any) => ({
-              ...e,
-              className: e.className ?? 'MessageEntityCustomEmoji',
-              _: e._ ?? 'messageEntityCustomEmoji',
-              offset: e.offset,
-              length: e.length,
-              documentId: String(e.documentId),
-            }))
+          ? options.entities.map((e) =>
+              'documentId' in e
+                ? {
+                    ...e,
+                    className: e.className ?? 'MessageEntityCustomEmoji',
+                    _: e._ ?? 'messageEntityCustomEmoji',
+                    offset: e.offset,
+                    length: e.length,
+                    documentId: String(e.documentId),
+                  }
+                : {
+                    ...e,
+                    className: 'MessageEntityMentionName',
+                    _: 'messageEntityMentionName',
+                    offset: e.offset,
+                    length: e.length,
+                    userId: String(e.userId),
+                  },
+            )
           : undefined) as any,
         groupedId,
         isEmpty: false,
@@ -669,6 +686,7 @@ export class MessageSendController {
       mockIds.push(mockId);
     }
 
+    await this.revealNewest(peerId, threadId);
     if (messageStore) {
       messageStore.update(mockEntities);
     }
@@ -676,7 +694,6 @@ export class MessageSendController {
       thread.appendLiveMessage(mid);
     }
     await this.options.drafts.clearAfterSend(peerId, threadId, saveInFlight);
-    await this.revealNewest(peerId, threadId);
 
     const abortController = new AbortController();
     let isCleanedUp = false;

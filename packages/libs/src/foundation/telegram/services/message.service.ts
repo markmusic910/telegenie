@@ -54,7 +54,7 @@ export type SendMediaOptions = {
   spoiler?: boolean;
   invertMedia?: boolean;
   videoCover?: File;
-  entities?: CustomEmojiEntity[];
+  entities?: OutgoingMessageEntity[];
   uploadId?: string;
   width?: number;
   height?: number;
@@ -84,25 +84,13 @@ export type SendMultiMediaOptions = {
   replyToMsgId?: number;
   invertMedia?: boolean;
   message?: string;
-  entities?: CustomEmojiEntity[];
+  entities?: OutgoingMessageEntity[];
   onProgress?: (event: SendMultiMediaProgressEvent) => void;
 };
 
 /** Telegram `random_id` is an int64. A UUID's dashes are not valid base-36 digits. */
 export function messageRandomId(uuid: string = uuidv4()) {
   return bigint(uuid.replace(/-/g, '').slice(0, 15), 16);
-}
-
-function apiCustomEmoji(entities?: CustomEmojiEntity[]): Api.TypeMessageEntity[] | undefined {
-  if (!entities?.length) return undefined;
-  return entities.map(
-    (entity) =>
-      new Api.MessageEntityCustomEmoji({
-        offset: entity.offset,
-        length: entity.length,
-        documentId: bigint(entity.documentId),
-      }),
-  );
 }
 
 /** An existing document sent with `messages.sendMedia` / `InputMediaDocument`. */
@@ -123,6 +111,18 @@ export type CustomEmojiEntity = {
   className?: string;
   _?: string;
 };
+
+/** A user mention-by-id span. Offsets are UTF-16, matching Telegram message entities. */
+export type MentionNameEntity = {
+  offset: number;
+  length: number;
+  userId: string;
+  className?: 'MessageEntityMentionName';
+  _?: 'messageEntityMentionName';
+};
+
+/** Outbound entities supported by the composer (custom emoji + mention-by-id). */
+export type OutgoingMessageEntity = CustomEmojiEntity | MentionNameEntity;
 
 export type ReloadStickerFileReference = () => Promise<string | undefined>;
 
@@ -870,7 +870,7 @@ export class MessageService {
       if (isCanceled) throw new Error('USER_CANCELED');
       options.onProgress?.({ stage: 'sending', progress: 100 });
 
-      const customEmoji = apiCustomEmoji(options.entities);
+      const apiEntities = await this.resolveApiEntities(options.entities);
       const updates = await this.client.invoke(
         new Api.messages.SendMedia({
           peer,
@@ -881,7 +881,7 @@ export class MessageService {
           clearDraft: true,
           scheduleDate: scheduleTime,
           invertMedia,
-          ...(customEmoji ? { entities: customEmoji } : {}),
+          ...(apiEntities ? { entities: apiEntities } : {}),
           ...(replyTo != null && replyTo > 0
             ? { replyTo: new Api.InputReplyToMessage({ replyToMsgId: replyTo }) }
             : {}),
@@ -1102,13 +1102,13 @@ export class MessageService {
         }
 
         const isCaptionItem = multiMedia.length === 0;
-        const customEmoji = isCaptionItem ? apiCustomEmoji(options.entities) : undefined;
+        const apiEntities = isCaptionItem ? await this.resolveApiEntities(options.entities) : undefined;
         multiMedia.push(
           new Api.InputSingleMedia({
             media: inputMedia,
             randomId: messageRandomId(),
             message: isCaptionItem ? (options.message ?? '') : '',
-            entities: customEmoji,
+            entities: apiEntities,
           }),
         );
       } catch (err) {
@@ -1164,12 +1164,12 @@ export class MessageService {
     message: string,
     scheduleTime?: number,
     replyToMsgId?: number,
-    entities?: CustomEmojiEntity[],
+    entities?: OutgoingMessageEntity[],
   ): Promise<number> => {
     if (!this.client) {
       throw new Error('Client not initialized');
     }
-    const customEmoji = apiCustomEmoji(entities);
+    const apiEntities = await this.resolveApiEntities(entities);
     const updates = await this.client.invoke(
       new Api.messages.SendMessage({
         peer: peer,
@@ -1178,7 +1178,7 @@ export class MessageService {
         noforwards: true,
         clearDraft: true,
         scheduleDate: scheduleTime,
-        ...(customEmoji ? { entities: customEmoji } : {}),
+        ...(apiEntities ? { entities: apiEntities } : {}),
         ...(replyToMsgId != null && replyToMsgId > 0
           ? { replyTo: new Api.InputReplyToMessage({ replyToMsgId }) }
           : {}),
@@ -1187,15 +1187,22 @@ export class MessageService {
     return this.finishSend(updates, peer, message, replyToMsgId);
   };
 
-  editMessage = async (peer: Api.TypeInputPeer, id: number, message: string): Promise<void> => {
+  editMessage = async (
+    peer: Api.TypeInputPeer,
+    id: number,
+    message: string,
+    entities?: OutgoingMessageEntity[],
+  ): Promise<void> => {
     if (!this.client) {
       throw new Error('Client not initialized');
     }
+    const apiEntities = await this.resolveApiEntities(entities);
     const updates = await this.client.invoke(
       new Api.messages.EditMessage({
         peer,
         id,
         message,
+        ...(apiEntities ? { entities: apiEntities } : {}),
       }),
     );
     if (this.updateManager) {
@@ -1399,7 +1406,7 @@ export class MessageService {
     peer: Api.TypeInputPeer,
     message: string,
     replyToMsgId?: number,
-    entities?: CustomEmojiEntity[],
+    entities?: OutgoingMessageEntity[],
   ): Promise<void> => {
     if (!this.client) {
       throw new Error('Client not initialized');
@@ -1408,16 +1415,46 @@ export class MessageService {
       message && replyToMsgId != null && replyToMsgId > 0
         ? new Api.InputReplyToMessage({ replyToMsgId })
         : undefined;
-    const customEmoji = message ? apiCustomEmoji(entities) : undefined;
+    const apiEntities = message ? await this.resolveApiEntities(entities) : undefined;
     await this.client.invoke(
       new Api.messages.SaveDraft({
         peer,
         message,
         ...(replyTo ? { replyTo } : {}),
-        ...(customEmoji ? { entities: customEmoji } : {}),
+        ...(apiEntities ? { entities: apiEntities } : {}),
       }),
     );
   };
+
+  private async resolveApiEntities(
+    entities?: OutgoingMessageEntity[],
+  ): Promise<Api.TypeMessageEntity[] | undefined> {
+    if (!entities?.length) return undefined;
+    const resolved: Api.TypeMessageEntity[] = [];
+    for (const entity of entities) {
+      if ('documentId' in entity && typeof entity.documentId === 'string') {
+        resolved.push(
+          new Api.MessageEntityCustomEmoji({
+            offset: entity.offset,
+            length: entity.length,
+            documentId: bigint(entity.documentId),
+          }),
+        );
+      } else if ('userId' in entity && typeof entity.userId === 'string') {
+        const row = await this.localDb?.getUserRow(entity.userId);
+        const accessHash = row?.entity.accessHash;
+        if (!accessHash) continue;
+        resolved.push(
+          new Api.InputMessageEntityMentionName({
+            offset: entity.offset,
+            length: entity.length,
+            userId: buildInputEntity(entity.userId, accessHash) as Api.InputUser,
+          }),
+        );
+      }
+    }
+    return resolved.length ? resolved : undefined;
+  }
 
   private async fetchMessagesByIds(
     peerId: string,

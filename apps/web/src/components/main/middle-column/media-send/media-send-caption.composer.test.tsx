@@ -6,6 +6,9 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 jest.mock('@telegenie/sdk', () => ({
   buildMediaUrl: jest.fn(),
+  Dialog: {
+    peerKindFromId: jest.fn(() => 'user'),
+  },
 }));
 
 jest.mock('@/lib/contexts/sdk.context', () => ({
@@ -13,7 +16,22 @@ jest.mock('@/lib/contexts/sdk.context', () => ({
     sticker: {
       rememberCustomEmoji: jest.fn(),
     },
+    chat: {
+      getFullChatByIds: jest.fn().mockResolvedValue([]),
+    },
+    channel: {
+      getParticipants: jest.fn().mockResolvedValue({ userIds: [], count: 0 }),
+    },
+    user: {
+      getTopInlineBots: jest.fn().mockResolvedValue([]),
+      searchContacts: jest.fn().mockResolvedValue([]),
+    },
   }),
+  useStore: (name: string) => {
+    if (name === 'global') return { auth: { currentUser: { id: 'self_1' } } };
+    return { get: jest.fn(() => undefined) };
+  },
+  useStoreEntities: () => null,
 }));
 
 jest.mock('../message.sticker-picker', () => {

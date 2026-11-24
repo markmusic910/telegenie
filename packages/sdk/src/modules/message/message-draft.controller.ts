@@ -1,4 +1,5 @@
 import { Controller, Method, RequestLog } from '@telegenie/decorators';
+import type { TypeMessageEntity } from '@telegenie/libs/foundation/telegram/types/api-types';
 import type { TelegramWorkerClient } from '@telegenie/libs/foundation/telegram/worker';
 import { readPeerAccessHash } from '@telegenie/libs/foundation/telegram/utils';
 import { toJS } from 'mobx';
@@ -10,9 +11,9 @@ import type StoreManager from '../../store/store.manager';
 import type { DialogEntity } from '../../store/types';
 import {
   dialogDraftFromMessage,
-  customEmojiEntities,
   draftThreadKey,
   normalizeDraft,
+  outgoingMessageEntities,
   sameDraft,
   serverMessageDraft,
 } from './message-draft.utils';
@@ -64,16 +65,28 @@ export class MessageDraftController {
   startEditing(peerId: string, messageId: string, threadId: string = MAIN_THREAD_ID): void {
     const thread = this.options.globalStore.getOrCreateThreadUI(peerId, threadId);
     thread.setEditingId(messageId);
-    const text = this.readMessageText(peerId, messageId);
+    const message = this.readMessage(peerId, messageId);
+    const text = message?.message ?? '';
     thread.setEditingText(text.length > 0 ? text : undefined);
+    thread.setEditingEntities(
+      message?.entities?.length ? (toJS(message.entities) as TypeMessageEntity[]) : undefined,
+    );
   }
 
   /** In-progress edit buffer. Empty string is kept so a cleared field stays cleared. */
   @RequestLog()
   @Method()
-  setEditingText(peerId: string, text: string, threadId: string = MAIN_THREAD_ID): void {
+  setEditingText(
+    peerId: string,
+    text: string,
+    threadId: string = MAIN_THREAD_ID,
+    entities?: TypeMessageEntity[],
+  ): void {
     const thread = this.options.globalStore.getOrCreateThreadUI(peerId, threadId);
     thread.setEditingText(text);
+    if (entities !== undefined) {
+      thread.setEditingEntities(entities.length > 0 ? entities : undefined);
+    }
   }
 
   /**
@@ -91,6 +104,7 @@ export class MessageDraftController {
     const thread = this.options.globalStore.getOrCreateThreadUI(toPeerId, threadId);
     thread.setEditingId(undefined);
     thread.setEditingText(undefined);
+    thread.setEditingEntities(undefined);
     const next: StagedForward = { fromPeerId, messageId, dropAuthor: false };
     thread.setForwarding(next);
   }
@@ -119,15 +133,15 @@ export class MessageDraftController {
     const thread = this.options.globalStore.getThreadUI(peerId, threadId);
     thread?.setEditingId(undefined);
     thread?.setEditingText(undefined);
+    thread?.setEditingEntities(undefined);
   }
 
-  private readMessageText(peerId: string, messageId: string): string {
+  private readMessage(peerId: string, messageId: string): Message | undefined {
     const storeName = `${peerId}-message`;
-    if (!this.options.sm.has(storeName)) return '';
+    if (!this.options.sm.has(storeName)) return undefined;
     const store = this.options.sm.get(storeName);
-    if (!('getAllData' in store)) return '';
-    const message = store.getAllData().get(messageId) as Message | undefined;
-    return message?.message ?? '';
+    if (!('getAllData' in store)) return undefined;
+    return store.getAllData().get(messageId) as Message | undefined;
   }
 
   /**
@@ -288,7 +302,7 @@ export class MessageDraftController {
         const replyNum =
           message && draft?.replyToMsgId != null ? Number(draft.replyToMsgId) : Number.NaN;
         const replyToMsgId = Number.isInteger(replyNum) && replyNum > 0 ? replyNum : undefined;
-        const entities = customEmojiEntities(draft?.entities);
+        const entities = outgoingMessageEntities(draft?.entities);
         const accessHash = readPeerAccessHash(this.options.sm, peerId);
         try {
           await this.options.worker.call(

@@ -42,10 +42,11 @@ export class ChatController {
 
   @RequestLog()
   @Method()
-  async getFullChatByIds(ids: string[]): Promise<Chat[]> {
-    const { fullChats, chats, channels, users } = await this.worker.call('chat.getFullChatByIds', [
-      ids,
-    ]);
+  async getFullChatByIds(ids: string[], options?: { forceRefresh?: boolean }): Promise<Chat[]> {
+    const { fullChats, chats, channels, users } = await this.worker.call(
+      'chat.getFullChatByIds',
+      options ? [ids, options] : [ids],
+    );
     const chatFullEntities = Object.values(fullChats).map((full) =>
       this.converter.convertChatFull(full),
     );

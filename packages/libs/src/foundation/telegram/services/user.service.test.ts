@@ -289,6 +289,87 @@ describe('UserService.resolveUsername', () => {
   });
 });
 
+describe('UserService.getTopInlineBots', () => {
+  it('fetches top inline bots and persists returned users', async () => {
+    const bot = new Api.User({
+      id: bigInt(77),
+      firstName: 'GifBot',
+      username: 'gif',
+      bot: true,
+      accessHash: bigInt(123),
+    });
+    const client: FakeClient = {
+      invoke: jest.fn().mockResolvedValue(
+        new Api.contacts.TopPeers({
+          categories: [
+            new Api.TopPeerCategoryPeers({
+              category: new Api.TopPeerCategoryBotsInline(),
+              count: 1,
+              peers: [new Api.TopPeer({ peer: new Api.PeerUser({ userId: bigInt(77) }), rating: 1 })],
+            }),
+          ],
+          chats: [],
+          users: [bot],
+        }),
+      ),
+    };
+    const localDb = {
+      putUsers: jest.fn().mockResolvedValue(undefined),
+      putChats: jest.fn().mockResolvedValue(undefined),
+      putChannels: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const result = await createService(client, { localDb: localDb as never }).getTopInlineBots(10);
+
+    const request = client.invoke.mock.calls[0][0] as Api.contacts.GetTopPeers;
+    expect(request).toBeInstanceOf(Api.contacts.GetTopPeers);
+    expect(request.botsInline).toBe(true);
+    expect(request.limit).toBe(10);
+    expect(result.userIds).toEqual(['77']);
+    expect(result.users['77']).toMatchObject({ id: '77', username: 'gif' });
+    expect(localDb.putUsers).toHaveBeenCalled();
+  });
+});
+
+describe('UserService.searchContacts', () => {
+  it('searches remote contacts and persists returned users', async () => {
+    const alice = new Api.User({
+      id: bigInt(42),
+      firstName: 'Alice',
+      username: 'alice',
+      accessHash: bigInt(999),
+    });
+    const client: FakeClient = {
+      invoke: jest.fn().mockResolvedValue(
+        new Api.contacts.Found({
+          myResults: [new Api.PeerUser({ userId: bigInt(42) })],
+          results: [],
+          chats: [],
+          users: [alice],
+        }),
+      ),
+    };
+    const localDb = {
+      putUsers: jest.fn().mockResolvedValue(undefined),
+      putChats: jest.fn().mockResolvedValue(undefined),
+      putChannels: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const result = await createService(client, { localDb: localDb as never }).searchContacts(
+      'alice',
+      15,
+    );
+
+    const request = client.invoke.mock.calls[0][0] as Api.contacts.Search;
+    expect(request).toBeInstanceOf(Api.contacts.Search);
+    expect(request.q).toBe('alice');
+    expect(request.limit).toBe(15);
+    expect(result.userIds).toEqual(['42']);
+    expect(result.users['42']).toMatchObject({ id: '42', username: 'alice' });
+    expect(localDb.putUsers).toHaveBeenCalled();
+  });
+});
+
 describe('UserService logging', () => {
   it('reports the client as null without a transport service', () => {
     const service = new UserService({

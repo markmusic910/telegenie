@@ -23,8 +23,9 @@ import {
   Dialog,
   MAIN_THREAD_ID,
   SERVICE_NOTIFICATIONS_USER_ID,
-  type CustomEmojiEntity,
   type Document,
+  type OutgoingMessageEntity,
+  type User,
 } from '@telegenie/sdk';
 import type { InputCompletionOption } from '@telegenie/agent/worker';
 import { BellOff, Check, Clock, Forward, Pencil, Send, Smile, X } from 'lucide-react';
@@ -33,8 +34,14 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from
 import { z } from 'zod';
 import ComposerAttachMenu from './composer-attach.menu';
 import ComposerCompleteSuggest from './composer-complete.suggest';
-import ComposerEmojiMirror, { type ComposerEmojiSpan } from './composer-emoji.mirror';
+import ComposerEmojiMirror, {
+  type ComposerEmojiSpan,
+  type ComposerMentionSpan,
+} from './composer-emoji.mirror';
 import EmojiSuggest from './emoji.suggest';
+import MentionSuggest from './mention.suggest';
+import { buildMentionInsertion, type MentionQueryMatch } from './mention.utils';
+import { useComposerMentions } from './use-composer-mentions';
 import MessageStickerPicker from '../message.sticker-picker';
 import MediaSendDialog from '../media-send/media-send.dialog';
 
@@ -282,24 +289,38 @@ const MessageComposer = observer(function MessageComposer({ peerId }: MessageCom
   const canSendStickers = !editing && !mediaRightBanned(channel, chat, 'sendStickers');
   const canSendGifs = !editing && !mediaRightBanned(channel, chat, 'sendGifs');
   const originalText = editingMessage?.message ?? '';
+  const activeEntities = editing
+    ? (thread?.editingEntities ?? editingMessage?.entities)
+    : threadDraft?.entities;
+  const originalEntitiesKey = editing
+    ? JSON.stringify(editingMessage?.entities ?? [])
+    : '';
+  const activeEntitiesKey = editing ? JSON.stringify(activeEntities ?? []) : '';
   const replyingToId = thread?.replyingToId;
   const forwarding = editing ? undefined : thread?.forwarding;
   const forwardKey = forwarding ? `${forwarding.fromPeerId}:${forwarding.messageId}` : undefined;
   const canSend = editing
-    ? !sending && text.trim().length > 0 && text !== originalText
+    ? !sending &&
+      text.trim().length > 0 &&
+      (text !== originalText || activeEntitiesKey !== originalEntitiesKey)
     : !postingBlocked && !sending && (text.trim().length > 0 || Boolean(forwarding));
   const grapheme = soleEmoji(text);
   const customEmojiId = coveringCustomEmojiId(text, editing ? undefined : threadDraft?.entities);
-  const emojiSpans: ComposerEmojiSpan[] = editing
-    ? []
-    : (threadDraft?.entities ?? []).flatMap((entity) =>
-        entity.className === 'MessageEntityCustomEmoji' &&
-        'documentId' in entity &&
-        typeof entity.documentId === 'string'
-          ? [{ offset: entity.offset, length: entity.length, documentId: entity.documentId }]
-          : [],
-      );
-  const hasEmojiSpans = emojiSpans.length > 0;
+  const emojiSpans: ComposerEmojiSpan[] = (activeEntities ?? []).flatMap((entity) =>
+    entity.className === 'MessageEntityCustomEmoji' &&
+    'documentId' in entity &&
+    typeof entity.documentId === 'string'
+      ? [{ offset: entity.offset, length: entity.length, documentId: entity.documentId }]
+      : [],
+  );
+  const mentionSpans: ComposerMentionSpan[] = (activeEntities ?? []).flatMap((entity) =>
+    entity.className === 'MessageEntityMentionName' &&
+    'userId' in entity &&
+    typeof entity.userId === 'string'
+      ? [{ offset: entity.offset, length: entity.length, userId: entity.userId }]
+      : [],
+  );
+  const hasMirrorSpans = emojiSpans.length > 0 || mentionSpans.length > 0;
   const suggestEmoji =
     !editing && !postingBlocked && grapheme && !customEmojiId ? grapheme : undefined;
   const showSuggest = Boolean(suggestEmoji) && dismissedEmoji !== suggestEmoji;
@@ -363,7 +384,7 @@ const MessageComposer = observer(function MessageComposer({ peerId }: MessageCom
 
   useLayoutEffect(() => {
     syncMirrorScroll();
-  }, [text, multiline, hasEmojiSpans, syncMirrorScroll]);
+  }, [text, multiline, hasMirrorSpans, syncMirrorScroll]);
 
   useLayoutEffect(() => {
     if (seenReplyIdRef.current === replyingToId) return;
@@ -404,7 +425,12 @@ const MessageComposer = observer(function MessageComposer({ peerId }: MessageCom
   const submit = useStableCallback(async () => {
     if (sendingRef.current) return;
     if (editingId) {
-      if (text.trim().length === 0 || text === (editingMessage?.message ?? '')) return;
+      if (
+        text.trim().length === 0 ||
+        (text === (editingMessage?.message ?? '') && activeEntitiesKey === originalEntitiesKey)
+      ) {
+        return;
+      }
       const value = text;
       sendingRef.current = true;
       setSending(true);
@@ -526,17 +552,49 @@ const MessageComposer = observer(function MessageComposer({ peerId }: MessageCom
     }
   });
 
-  /** Write edited composer text. Custom-emoji entities follow the text instead of being lost. */
+  /** Write edited composer text. Custom-emoji & mention entities follow the text instead of being lost. */
   const writeText = useStableCallback((next: string) => {
+    const entities = rebaseEntities(text, next, activeEntities);
     if (editingId) {
-      sdk.messageDraft.setEditingText(peerId, next);
+      sdk.messageDraft.setEditingText(peerId, next, MAIN_THREAD_ID, entities);
       return;
     }
-    const entities = rebaseEntities(text, next, threadDraft?.entities);
     sdk.messageDraft.setDraft(
       peerId,
       next ? { text: next, ...(entities.length ? { entities } : {}) } : undefined,
     );
+  });
+
+  const insertMention = useStableCallback((user: User, range: MentionQueryMatch) => {
+    const input = inputRef.current;
+    const current = input?.value ?? text;
+    const inserted = buildMentionInsertion(current, activeEntities, range, user);
+    if (editingId) {
+      sdk.messageDraft.setEditingText(peerId, inserted.text, MAIN_THREAD_ID, inserted.entities);
+    } else {
+      sdk.messageDraft.setDraft(
+        peerId,
+        inserted.text
+          ? {
+              text: inserted.text,
+              ...(inserted.entities.length ? { entities: inserted.entities } : {}),
+            }
+          : undefined,
+      );
+    }
+    requestAnimationFrame(() => {
+      input?.focus();
+      input?.setSelectionRange(inserted.caret, inserted.caret);
+      mentions.syncSelection(input);
+    });
+  });
+
+  const mentions = useComposerMentions({
+    peerId,
+    text,
+    disabled: disabled || sending,
+    inputRef,
+    onInsertUser: insertMention,
   });
 
   const insertEmoji = useStableCallback((emoji: string) => {
@@ -560,17 +618,8 @@ const MessageComposer = observer(function MessageComposer({ peerId }: MessageCom
     const start = input?.selectionStart ?? current.length;
     const end = input?.selectionEnd ?? start;
     const next = `${current.slice(0, start)}${alt}${current.slice(end)}`;
-    if (editingId) {
-      sdk.messageDraft.setEditingText(peerId, next);
-      const caret = start + alt.length;
-      requestAnimationFrame(() => {
-        input?.focus();
-        input?.setSelectionRange(caret, caret);
-      });
-      return;
-    }
     const delta = alt.length - (end - start);
-    const entities = (threadDraft?.entities ?? []).flatMap((entity) => {
+    const entities = (activeEntities ?? []).flatMap((entity) => {
       if (typeof entity.offset !== 'number' || typeof entity.length !== 'number') return [];
       if (entity.offset >= end) return [{ ...entity, offset: entity.offset + delta }];
       if (entity.offset + entity.length <= start) return [entity];
@@ -582,7 +631,11 @@ const MessageComposer = observer(function MessageComposer({ peerId }: MessageCom
       length: alt.length,
       documentId: document.id,
     });
-    sdk.messageDraft.setDraft(peerId, next ? { text: next, entities } : undefined);
+    if (editingId) {
+      sdk.messageDraft.setEditingText(peerId, next, MAIN_THREAD_ID, entities);
+    } else {
+      sdk.messageDraft.setDraft(peerId, next ? { text: next, entities } : undefined);
+    }
     const caret = start + alt.length;
     requestAnimationFrame(() => {
       input?.focus();
@@ -636,6 +689,8 @@ const MessageComposer = observer(function MessageComposer({ peerId }: MessageCom
   });
 
   const onKeyDown = useStableCallback((event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (mentions.handleKeyDown(event)) return;
+
     if (completionOpen) {
       if (event.key === 'Escape') {
         event.preventDefault();
@@ -719,8 +774,21 @@ const MessageComposer = observer(function MessageComposer({ peerId }: MessageCom
         />
       ) : null}
       <TooltipProvider>
-        <Field className={cn('relative w-full gap-1', (showSuggest || completionOpen) && 'z-20')}>
-          {completionOpen ? (
+        <Field
+          className={cn(
+            'relative w-full gap-1',
+            (showSuggest || completionOpen || mentions.isOpen) && 'z-20',
+          )}
+        >
+          {mentions.isOpen ? (
+            <MentionSuggest
+              users={mentions.users}
+              selectedIndex={mentions.selectedIndex}
+              onSelect={mentions.selectUser}
+              onHover={mentions.setSelectedIndex}
+              onDismiss={mentions.dismiss}
+            />
+          ) : completionOpen ? (
             <ComposerCompleteSuggest
               loading={completionLoading}
               options={completionOptions}
@@ -777,23 +845,28 @@ const MessageComposer = observer(function MessageComposer({ peerId }: MessageCom
                 disabled={disabled || sending}
                 className={cn(
                   composerInputClass(multiline),
-                  hasEmojiSpans &&
+                  hasMirrorSpans &&
                     '[&_[data-slot=textarea]]:relative [&_[data-slot=textarea]]:z-20 [&_[data-slot=textarea]]:text-transparent [&_[data-slot=textarea]]:[-webkit-text-fill-color:transparent] [&_[data-slot=textarea]]:caret-foreground',
                 )}
                 onChange={(event) => {
                   writeText(event.target.value);
+                  mentions.syncSelection(event.currentTarget);
                   if (completionOpen) dismissCompletion();
                   if (error) setError(null);
                 }}
+                onSelect={(event) => mentions.syncSelection(event.currentTarget)}
+                onClick={(event) => mentions.syncSelection(event.currentTarget)}
+                onKeyUp={(event) => mentions.syncSelection(event.currentTarget)}
                 onScroll={syncMirrorScroll}
                 onKeyDown={onKeyDown}
                 onPaste={handlePaste}
               />
-              {hasEmojiSpans ? (
+              {hasMirrorSpans ? (
                 <ComposerEmojiMirror
                   ref={mirrorRef}
                   text={text}
                   spans={emojiSpans}
+                  mentionSpans={mentionSpans}
                   multiline={multiline}
                 />
               ) : null}
@@ -884,7 +957,7 @@ const MessageComposer = observer(function MessageComposer({ peerId }: MessageCom
         peerId={peerId}
         threadId={MAIN_THREAD_ID}
         initialCaption={text}
-        initialEntities={threadDraft?.entities as CustomEmojiEntity[] | undefined}
+        initialEntities={threadDraft?.entities as OutgoingMessageEntity[] | undefined}
         onSent={handleMediaSent}
       />
     </div>

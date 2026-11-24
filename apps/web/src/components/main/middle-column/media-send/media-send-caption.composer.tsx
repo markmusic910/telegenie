@@ -8,7 +8,8 @@ import {
   Smile,
   Send,
 } from 'lucide-react';
-import type { CustomEmojiEntity, Document } from '@telegenie/sdk';
+import { observer } from 'mobx-react-lite';
+import type { Document, OutgoingMessageEntity, User } from '@telegenie/sdk';
 import { useSDK } from '@/lib/contexts/sdk.context';
 import { Button } from '@/lib/components/ui/button';
 import {
@@ -17,16 +18,23 @@ import {
   PopoverPopup,
 } from '@/lib/components/ui/popover';
 import { Textarea } from '@/lib/components/ui/textarea';
+import { rebaseEntities } from '@/lib/utils/emoji.grapheme';
 import MessageStickerPicker from '../message.sticker-picker';
-import ComposerEmojiMirror, { type ComposerEmojiSpan } from '../message-composer/composer-emoji.mirror';
+import ComposerEmojiMirror, {
+  type ComposerEmojiSpan,
+  type ComposerMentionSpan,
+} from '../message-composer/composer-emoji.mirror';
+import MentionSuggest from '../message-composer/mention.suggest';
+import { buildMentionInsertion, type MentionQueryMatch } from '../message-composer/mention.utils';
+import { useComposerMentions } from '../message-composer/use-composer-mentions';
 import { cn } from '@/lib/utils';
 
 export interface MediaSendCaptionComposerProps {
   peerId: string;
   caption: string;
   onCaptionChange: (caption: string) => void;
-  entities: CustomEmojiEntity[];
-  onEntitiesChange: React.Dispatch<React.SetStateAction<CustomEmojiEntity[]>>;
+  entities: OutgoingMessageEntity[];
+  onEntitiesChange: React.Dispatch<React.SetStateAction<OutgoingMessageEntity[]>>;
   invertMedia: boolean;
   hasAnySpoiler: boolean;
   allSpoilers: boolean;
@@ -34,7 +42,7 @@ export interface MediaSendCaptionComposerProps {
   onSend: () => void;
 }
 
-export default function MediaSendCaptionComposer({
+const MediaSendCaptionComposer = observer(function MediaSendCaptionComposer({
   peerId,
   caption,
   onCaptionChange,
@@ -50,14 +58,23 @@ export default function MediaSendCaptionComposer({
 
   const emojiSpans: ComposerEmojiSpan[] = useMemo(
     () =>
-      entities.map((entity) => ({
-        offset: entity.offset,
-        length: entity.length,
-        documentId: entity.documentId,
-      })),
+      entities.flatMap((entity) =>
+        'documentId' in entity && typeof entity.documentId === 'string'
+          ? [{ offset: entity.offset, length: entity.length, documentId: entity.documentId }]
+          : [],
+      ),
     [entities],
   );
-  const hasEmojiSpans = emojiSpans.length > 0;
+  const mentionSpans: ComposerMentionSpan[] = useMemo(
+    () =>
+      entities.flatMap((entity) =>
+        'userId' in entity && typeof entity.userId === 'string'
+          ? [{ offset: entity.offset, length: entity.length, userId: entity.userId }]
+          : [],
+      ),
+    [entities],
+  );
+  const hasMirrorSpans = emojiSpans.length > 0 || mentionSpans.length > 0;
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const mirrorRef = useRef<HTMLDivElement>(null);
@@ -70,7 +87,38 @@ export default function MediaSendCaptionComposer({
 
   useLayoutEffect(() => {
     syncMirrorScroll();
-  }, [caption, hasEmojiSpans, syncMirrorScroll]);
+  }, [caption, hasMirrorSpans, syncMirrorScroll]);
+
+  const handleCaptionEdit = useCallback(
+    (next: string) => {
+      onEntitiesChange((prev) => rebaseEntities(caption, next, prev));
+      onCaptionChange(next);
+    },
+    [caption, onCaptionChange, onEntitiesChange],
+  );
+
+  const handleInsertMention = useCallback(
+    (user: User, range: MentionQueryMatch) => {
+      const input = inputRef.current;
+      const current = input?.value ?? caption;
+      const inserted = buildMentionInsertion<OutgoingMessageEntity>(current, entities, range, user);
+      onEntitiesChange(inserted.entities);
+      onCaptionChange(inserted.text);
+      requestAnimationFrame(() => {
+        input?.focus();
+        input?.setSelectionRange(inserted.caret, inserted.caret);
+        mentions.syncSelection(input);
+      });
+    },
+    [caption, entities, onCaptionChange, onEntitiesChange],
+  );
+
+  const mentions = useComposerMentions({
+    peerId,
+    text: caption,
+    inputRef,
+    onInsertUser: handleInsertMention,
+  });
 
   const handleInsertEmoji = useCallback(
     (emoji: string) => {
@@ -79,14 +127,14 @@ export default function MediaSendCaptionComposer({
       const start = input?.selectionStart ?? current.length;
       const end = input?.selectionEnd ?? start;
       const next = `${current.slice(0, start)}${emoji}${current.slice(end)}`;
-      onCaptionChange(next);
+      handleCaptionEdit(next);
       const caret = start + emoji.length;
       requestAnimationFrame(() => {
         input?.focus();
         input?.setSelectionRange(caret, caret);
       });
     },
-    [caption, onCaptionChange],
+    [caption, handleCaptionEdit],
   );
 
   const handleInsertCustomEmoji = useCallback(
@@ -158,7 +206,16 @@ export default function MediaSendCaptionComposer({
       )}
 
       {/* Input row: vertically centered with composer-identical send button */}
-      <div className="flex items-center gap-2 w-full">
+      <div className={cn('relative flex items-center gap-2 w-full', mentions.isOpen && 'z-20')}>
+        {mentions.isOpen ? (
+          <MentionSuggest
+            users={mentions.users}
+            selectedIndex={mentions.selectedIndex}
+            onSelect={mentions.selectUser}
+            onHover={mentions.setSelectedIndex}
+            onDismiss={mentions.dismiss}
+          />
+        ) : null}
         <div className="relative min-w-0 flex-1">
           <Textarea
             ref={inputRef}
@@ -177,23 +234,31 @@ export default function MediaSendCaptionComposer({
               '[&_[data-slot=textarea]]:py-2.5',
               '[&_[data-slot=textarea]]:max-h-32',
               '[&_[data-slot=textarea]]:overflow-y-auto',
-              hasEmojiSpans &&
+              hasMirrorSpans &&
                 '[&_[data-slot=textarea]]:relative [&_[data-slot=textarea]]:z-20 [&_[data-slot=textarea]]:text-transparent [&_[data-slot=textarea]]:[-webkit-text-fill-color:transparent] [&_[data-slot=textarea]]:caret-foreground',
             )}
-            onChange={(e) => onCaptionChange(e.target.value)}
+            onChange={(e) => {
+              handleCaptionEdit(e.target.value);
+              mentions.syncSelection(e.currentTarget);
+            }}
+            onSelect={(e) => mentions.syncSelection(e.currentTarget)}
+            onClick={(e) => mentions.syncSelection(e.currentTarget)}
+            onKeyUp={(e) => mentions.syncSelection(e.currentTarget)}
             onScroll={syncMirrorScroll}
             onKeyDown={(e) => {
+              if (mentions.handleKeyDown(e)) return;
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 onSend();
               }
             }}
           />
-          {hasEmojiSpans && (
+          {hasMirrorSpans && (
             <ComposerEmojiMirror
               ref={mirrorRef}
               text={caption}
               spans={emojiSpans}
+              mentionSpans={mentionSpans}
               multiline={true}
             />
           )}
@@ -245,4 +310,6 @@ export default function MediaSendCaptionComposer({
       </div>
     </div>
   );
-}
+});
+
+export default MediaSendCaptionComposer;

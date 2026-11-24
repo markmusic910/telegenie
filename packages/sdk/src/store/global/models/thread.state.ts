@@ -37,6 +37,7 @@ export type ThreadUISnapshot = {
   draft?: MessageDraft;
   editingId?: string;
   editingText?: string;
+  editingEntities?: TypeMessageEntity[];
   replyingToId?: string;
   replyStack?: string[];
   focusedMessageId?: string;
@@ -120,6 +121,8 @@ export interface ThreadUIState {
   editingId?: string;
   /** Composer buffer for the in-progress edit. Not synced as a server draft. */
   editingText?: string;
+  /** Entities for the in-progress edit buffer (custom emojis, mention-by-id). */
+  editingEntities?: TypeMessageEntity[];
   /** Message ID being replied to in the composer */
   replyingToId?: string;
   /**

@@ -1,8 +1,8 @@
 import type { LocalDbEntityChange, ResolvedInputPeer } from '../local-db/types';
 import type { PlainAvailableReaction } from '../services/converters/message.converter';
 import type {
-  CustomEmojiEntity,
   ForwardMessagesOptions,
+  OutgoingMessageEntity,
   SendStickerDocument,
   UpdatePinnedMessageOptions,
 } from '../services/message.service';
@@ -158,7 +158,7 @@ export type SendMediaWorkerPayload = {
   spoiler?: boolean;
   invertMedia?: boolean;
   videoCover?: WorkerFilePayload;
-  entities?: CustomEmojiEntity[];
+  entities?: OutgoingMessageEntity[];
   uploadId?: string;
   width?: number;
   height?: number;
@@ -188,7 +188,7 @@ export type SendMultiMediaWorkerPayload = {
   scheduleTime?: number;
   replyToMsgId?: number;
   invertMedia?: boolean;
-  entities?: CustomEmojiEntity[];
+  entities?: OutgoingMessageEntity[];
 };
 
 /**
@@ -235,7 +235,10 @@ export type TelegramWorkerApi = {
   'dialogFilter.toggleTags': { args: [enabled: boolean]; result: void };
 
   'chat.getChatsByIds': { args: [ids: string[]]; result: Record<string, Chat> };
-  'chat.getFullChatByIds': { args: [ids: string[]]; result: FullChatBundle };
+  'chat.getFullChatByIds': {
+    args: [ids: string[], options?: { forceRefresh?: boolean }];
+    result: FullChatBundle;
+  };
   'chat.createBasicGroup': {
     args: [title: string, users: PeerIdAccessHash[]];
     result: { chat: Chat; missingInvitees: MissingInvitee[] };
@@ -267,9 +270,33 @@ export type TelegramWorkerApi = {
     args: [channelId: string, accessHash?: string];
     result: string;
   };
+  'channel.getParticipants': {
+    args: [
+      channelId: string,
+      options?: {
+        q?: string;
+        offset?: number;
+        limit?: number;
+        accessHash?: string;
+      },
+    ];
+    result: {
+      participantIds: string[];
+      users: Record<string, User>;
+      count: number;
+    };
+  };
 
   'user.getMe': { args: []; result: User };
   'user.getContacts': { args: []; result: Record<string, User> };
+  'user.getTopInlineBots': {
+    args: [limit?: number];
+    result: { userIds: string[]; users: Record<string, User> };
+  };
+  'user.searchContacts': {
+    args: [q: string, limit?: number];
+    result: { userIds: string[]; users: Record<string, User> };
+  };
   'user.getUsers': { args: [options: PeerIdAccessHash[]]; result: Record<string, User> };
   'user.getUsersByIds': { args: [ids: string[]]; result: Record<string, User> };
   'user.getFullUsers': { args: [options: PeerIdAccessHash[]]; result: FullUserBundle };
@@ -318,12 +345,18 @@ export type TelegramWorkerApi = {
       accessHash?: string,
       scheduleTime?: number,
       replyToMsgId?: number,
-      entities?: CustomEmojiEntity[],
+      entities?: OutgoingMessageEntity[],
     ];
     result: number;
   };
   'message.editMessage': {
-    args: [peerId: string, messageId: number, message: string, accessHash?: string];
+    args: [
+      peerId: string,
+      messageId: number,
+      message: string,
+      accessHash?: string,
+      entities?: OutgoingMessageEntity[],
+    ];
     result: void;
   };
   'message.forwardMessages': {
@@ -357,7 +390,7 @@ export type TelegramWorkerApi = {
       message: string,
       accessHash?: string,
       replyToMsgId?: number,
-      entities?: CustomEmojiEntity[],
+      entities?: OutgoingMessageEntity[],
     ];
     result: void;
   };

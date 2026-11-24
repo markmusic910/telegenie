@@ -1463,3 +1463,50 @@ describe('MessageService.updatePinnedMessage', () => {
     expect(request.unpin).toBe(true);
   });
 });
+
+describe('MessageService mention-name entity serialization', () => {
+  const peer = new Api.InputPeerUser({ userId: bigInt(7), accessHash: bigInt(1) });
+
+  it('serializes MentionNameEntity into InputMessageEntityMentionName on sendMessage, editMessage, and saveDraft', async () => {
+    const client = createClient();
+    client.invoke.mockResolvedValue(
+      new Api.UpdateShortSentMessage({ id: 99, pts: 1, ptsCount: 1, date: 1, out: true }),
+    );
+    const localDb = {
+      getUserRow: jest.fn(async (id: string) =>
+        id === '42' ? { entity: { id: '42', accessHash: '888' } } : undefined,
+      ),
+    };
+    const service = createService(client, localDb);
+
+    await service.sendMessage(peer, 'Hi Bob', undefined, undefined, [
+      { className: 'MessageEntityMentionName', offset: 3, length: 3, userId: '42' },
+      // Missing accessHash in LocalDb is skipped gracefully
+      { className: 'MessageEntityMentionName', offset: 0, length: 2, userId: '999' },
+    ]);
+
+    const sendReq = client.invoke.mock.calls[0][0] as Api.messages.SendMessage;
+    expect(sendReq.entities).toHaveLength(1);
+    expect(sendReq.entities?.[0]).toBeInstanceOf(Api.InputMessageEntityMentionName);
+    const mentionEntity = sendReq.entities?.[0] as Api.InputMessageEntityMentionName;
+    expect(mentionEntity.offset).toBe(3);
+    expect(mentionEntity.length).toBe(3);
+    expect(mentionEntity.userId).toBeInstanceOf(Api.InputUser);
+
+    client.invoke.mockResolvedValue(new Api.Updates({ updates: [], users: [], chats: [], date: 1, seq: 0 }));
+    await service.editMessage(peer, 99, 'Hi Bob!', [
+      { className: 'MessageEntityMentionName', offset: 3, length: 3, userId: '42' },
+    ]);
+    const editReq = client.invoke.mock.calls[1][0] as Api.messages.EditMessage;
+    expect(editReq.entities).toHaveLength(1);
+    expect(editReq.entities?.[0]).toBeInstanceOf(Api.InputMessageEntityMentionName);
+
+    client.invoke.mockResolvedValue(true);
+    await service.saveDraft(peer, 'Hi Bob', undefined, [
+      { className: 'MessageEntityMentionName', offset: 3, length: 3, userId: '42' },
+    ]);
+    const draftReq = client.invoke.mock.calls[2][0] as Api.messages.SaveDraft;
+    expect(draftReq.entities).toHaveLength(1);
+    expect(draftReq.entities?.[0]).toBeInstanceOf(Api.InputMessageEntityMentionName);
+  });
+});

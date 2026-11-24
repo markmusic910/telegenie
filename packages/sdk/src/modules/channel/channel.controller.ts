@@ -18,6 +18,14 @@ export class ChannelController {
   worker: TelegramWorkerClient;
   sm: StoreManager;
   converter: ConversionService;
+  private readonly recentParticipantsCache = new Map<
+    string,
+    { userIds: string[]; count: number }
+  >();
+  private readonly recentParticipantsInFlight = new Map<
+    string,
+    Promise<{ userIds: string[]; count: number }>
+  >();
 
   constructor({ sm, debug, worker }: ChannelControllerOptions) {
     this.converter = new ConversionService({
@@ -116,5 +124,73 @@ export class ChannelController {
   @Method()
   async exportInviteLink(channelId: string, accessHash?: string): Promise<string> {
     return this.worker.call('channel.exportInviteLink', [channelId, accessHash]);
+  }
+
+  /**
+   * Fetch supergroup/channel participants and hydrate returned users into the user store.
+   * Initial recent fetches (`!q && !offset`) are cached per channel for the session.
+   */
+  @RequestLog()
+  @Method()
+  async getParticipants(
+    channelId: string,
+    options?: {
+      q?: string;
+      offset?: number;
+      limit?: number;
+      forceRefresh?: boolean;
+    },
+  ): Promise<{ userIds: string[]; count: number }> {
+    const query = options?.q?.trim() ?? '';
+    const offset = options?.offset ?? 0;
+    const isInitialRecent = !query && offset === 0;
+
+    if (isInitialRecent && !options?.forceRefresh) {
+      const cached = this.recentParticipantsCache.get(channelId);
+      if (cached) return cached;
+      const inflight = this.recentParticipantsInFlight.get(channelId);
+      if (inflight) return inflight;
+    }
+
+    const channel = this.sm.has('channel')
+      ? (this.sm.get('channel').getAllData().get(channelId) as Channel | undefined)
+      : undefined;
+
+    const run = (async (): Promise<{ userIds: string[]; count: number }> => {
+      const { participantIds, users, count } = await this.worker.call('channel.getParticipants', [
+        channelId,
+        {
+          q: query || undefined,
+          offset,
+          limit: options?.limit ?? 200,
+          accessHash: channel?.accessHash,
+        },
+      ]);
+
+      if (Object.keys(users).length > 0 && this.sm.has('user')) {
+        this.sm
+          .get('user')
+          .update(
+            this.converter.convertUsers(Object.values(users)).map((entity) => new User(entity)),
+          );
+      }
+
+      const result = { userIds: participantIds, count };
+      if (isInitialRecent) {
+        this.recentParticipantsCache.set(channelId, result);
+      }
+      return result;
+    })();
+
+    if (isInitialRecent) {
+      this.recentParticipantsInFlight.set(channelId, run);
+      try {
+        return await run;
+      } finally {
+        this.recentParticipantsInFlight.delete(channelId);
+      }
+    }
+
+    return run;
   }
 }

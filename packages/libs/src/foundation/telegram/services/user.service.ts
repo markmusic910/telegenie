@@ -336,4 +336,110 @@ export class UserService {
 
     return { peerId, users, chats, channels };
   };
+
+  /**
+   * Fetch top inline bots via `contacts.getTopPeers` (`botsInline: true`).
+   */
+  getTopInlineBots = async (
+    limit: number = 20,
+  ): Promise<{ userIds: string[]; users: Record<string, User> }> => {
+    if (!this.client) {
+      throw new Error('Client not initialized');
+    }
+
+    const result = await this.client.invoke(
+      new Api.contacts.GetTopPeers({
+        botsInline: true,
+        offset: 0,
+        limit,
+        hash: bigint(0),
+      }),
+    );
+
+    if (!(result instanceof Api.contacts.TopPeers)) {
+      return { userIds: [], users: {} };
+    }
+
+    const users: Record<string, User> = {};
+    const convertedUsers: User[] = [];
+    for (const entry of result.users ?? []) {
+      if (entry instanceof Api.User) {
+        const converted = convertUser(entry);
+        users[converted.id] = converted;
+        convertedUsers.push(converted);
+      }
+    }
+
+    await persistPeers(this.localDb, { users: convertedUsers });
+
+    const userIds: string[] = [];
+    const seen = new Set<string>();
+    for (const category of result.categories ?? []) {
+      if (!(category.category instanceof Api.TopPeerCategoryBotsInline)) continue;
+      for (const topPeer of category.peers ?? []) {
+        if (topPeer.peer instanceof Api.PeerUser) {
+          const id = buildMarkedPeerIdByType(topPeer.peer.userId.toString(), 'user');
+          if (id && !seen.has(id)) {
+            seen.add(id);
+            userIds.push(id);
+          }
+        }
+      }
+    }
+
+    return { userIds, users };
+  };
+
+  /**
+   * Search remote users/bots via `contacts.search` and persist returned users to LocalDb.
+   */
+  searchContacts = async (
+    q: string,
+    limit: number = 20,
+  ): Promise<{ userIds: string[]; users: Record<string, User> }> => {
+    const query = q.trim();
+    if (!query) {
+      return { userIds: [], users: {} };
+    }
+    if (!this.client) {
+      throw new Error('Client not initialized');
+    }
+
+    const result = await this.client.invoke(
+      new Api.contacts.Search({
+        q: query,
+        limit,
+      }),
+    );
+
+    if (!(result instanceof Api.contacts.Found)) {
+      return { userIds: [], users: {} };
+    }
+
+    const users: Record<string, User> = {};
+    const convertedUsers: User[] = [];
+    for (const entry of result.users ?? []) {
+      if (entry instanceof Api.User) {
+        const converted = convertUser(entry);
+        users[converted.id] = converted;
+        convertedUsers.push(converted);
+      }
+    }
+
+    await persistPeers(this.localDb, { users: convertedUsers });
+
+    const userIds: string[] = [];
+    const seen = new Set<string>();
+    for (const peer of [...(result.myResults ?? []), ...(result.results ?? [])]) {
+      if (peer instanceof Api.PeerUser) {
+        const id = buildMarkedPeerIdByType(peer.userId.toString(), 'user');
+        if (id && !seen.has(id)) {
+          seen.add(id);
+          userIds.push(id);
+        }
+      }
+    }
+
+    return { userIds, users };
+  };
 }
