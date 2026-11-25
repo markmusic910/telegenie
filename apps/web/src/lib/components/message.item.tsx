@@ -462,6 +462,7 @@ const MessageItem = observer(function MessageItem({
               album={album}
               isOwn={isOwn}
               observeIntersectionForLoading={observeIntersectionForLoading}
+              observeIntersectionForPlaying={observeIntersectionForPlaying}
             />
             {isPureMedia && (
               <MediaMetaBadge
@@ -599,9 +600,13 @@ const MessageItem = observer(function MessageItem({
               localCoverBlobUrl={message.localCoverBlobUrl}
               dimensions={mediaDisplayDims}
               isSpoiler={message.hasSpoiler}
+              isGif={message.isGif}
               peerId={message.peerId}
               messageId={Number(message.id)}
               observeIntersectionForLoading={observeIntersectionForLoading}
+              observeIntersectionForPlaying={
+                message.isGif ? observeIntersectionForPlaying : undefined
+              }
               uploadProgress={message.uploadProgress}
               onAbortUpload={
                 message.uploadId

@@ -1,6 +1,6 @@
 'use client';
 
-import { getEntityTypeById, markedChannelIdFromMtp } from '@telegenie/libs/foundation/telegram/helpers';
+import { resolvePersonalChannelPeerId } from '@telegenie/libs/foundation/telegram/helpers';
 import {
   collectAlbumPreview,
   fallbackPeerDisplay,
@@ -22,18 +22,6 @@ export interface UserProfileChannelCardProps {
   personalChannelMessageId?: number;
 }
 
-function resolveChannelPeerId(rawChannelId: string): string {
-  const trimmed = rawChannelId.trim();
-  if (!trimmed) return '';
-  try {
-    return getEntityTypeById(trimmed) === 'channel'
-      ? trimmed
-      : markedChannelIdFromMtp(trimmed);
-  } catch {
-    return trimmed;
-  }
-}
-
 const UserProfileChannelCard = observer(function UserProfileChannelCard({
   personalChannelId,
   personalChannelMessageId,
@@ -41,7 +29,7 @@ const UserProfileChannelCard = observer(function UserProfileChannelCard({
   const sdk = useSDK();
   const selectDialog = useSelectDialog();
   const channelPeerId = useMemo(
-    () => resolveChannelPeerId(personalChannelId),
+    () => resolvePersonalChannelPeerId(personalChannelId),
     [personalChannelId],
   );
 

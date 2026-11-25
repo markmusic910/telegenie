@@ -278,7 +278,7 @@ export class UserController {
   @RequestLog()
   @Method()
   popProfile(): string | undefined {
-    return this.globalStore?.nav.popProfilePeerId();
+    return this.globalStore?.nav.popMiddleOverlay()?.peerId;
   }
 
   /** Clear the entire User Profile stack (e.g. when opening a chat). */

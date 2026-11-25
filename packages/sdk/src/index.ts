@@ -138,6 +138,7 @@ export {
   albumPreviewPlaceholder,
   collectAlbumPreview,
   collectMessagePreview,
+  documentIsTelegramGif,
   formatDialogPreviewText,
   previewKindFromMedia,
   previewThumbFromMedia,
@@ -215,6 +216,8 @@ export {
   type DialogPeerKind,
   type PeerDisplay,
 } from './store/utils/peer-display';
+export type { DialogProfileSearchTab } from './modules/dialog-info/dialog-info.controller';
+export type { MiddleOverlayFrame } from './store/global/models/nav.state';
 export {
   TeleGenieSDK,
   messageStoreName,

@@ -40,6 +40,25 @@ export type MessagesByIdsResult = {
 
 export type LoadHistoryDirection = 'around' | 'backwards' | 'forwards';
 
+export type DialogProfileSearchTab = 'media' | 'files' | 'links' | 'voice' | 'gifs';
+
+function inputFilterForProfileTab(tab: DialogProfileSearchTab): Api.TypeMessagesFilter {
+  switch (tab) {
+    case 'media':
+      return new Api.InputMessagesFilterPhotoVideo();
+    case 'files':
+      return new Api.InputMessagesFilterDocument();
+    case 'links':
+      return new Api.InputMessagesFilterUrl();
+    case 'voice':
+      return new Api.InputMessagesFilterVoice();
+    case 'gifs':
+      return new Api.InputMessagesFilterGif();
+    default:
+      return new Api.InputMessagesFilterEmpty();
+  }
+}
+
 export type SendMediaProgressStage = 'uploading_cover' | 'uploading' | 'sending';
 
 export type SendMediaProgressEvent = {
@@ -351,6 +370,62 @@ export class MessageService {
         maxId: 0,
         minId: 0,
         hash: bigint(0) as any,
+      }),
+    );
+
+    if (!resp || resp instanceof Api.messages.MessagesNotModified) {
+      return {
+        messages: [],
+        messageServices: [],
+        users: [],
+        chats: [],
+        channels: [],
+        emptyMessages: [],
+        count: 0,
+      };
+    }
+
+    await this.persistPeersFromMessagesResponse(resp);
+    const converted = convertMessages(resp.messages);
+    const { users, chats, channels } = extractPeersFromMessagesResponse(resp);
+    const messages = converted.messages;
+    const count = 'count' in resp && typeof resp.count === 'number' ? resp.count : messages.length;
+
+    return {
+      messages,
+      messageServices: converted.messageServices,
+      users,
+      chats,
+      channels,
+      emptyMessages: converted.emptyMessages,
+      count,
+    };
+  };
+
+  searchPeerMessages = async (
+    peerId: string,
+    tab: DialogProfileSearchTab,
+    offsetId = 0,
+    limit = 50,
+  ): Promise<PinnedMessagesResult> => {
+    if (!this.client) {
+      throw new Error('Client not initialized');
+    }
+
+    const peer = await this.resolveInputPeerForRead(peerId);
+    const resp = await this.client.invoke(
+      new Api.messages.Search({
+        peer,
+        q: '',
+        filter: inputFilterForProfileTab(tab),
+        minDate: 0,
+        maxDate: 0,
+        offsetId,
+        addOffset: 0,
+        limit,
+        maxId: 0,
+        minId: 0,
+        hash: bigint(0) as never,
       }),
     );
 

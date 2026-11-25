@@ -280,6 +280,43 @@ function documentIsImage(document: { attributes?: unknown[]; mimeType?: string }
   );
 }
 
+function documentFileName(document: { attributes?: unknown[] }): string | undefined {
+  for (const attr of document.attributes ?? []) {
+    if (
+      attr &&
+      typeof attr === 'object' &&
+      'fileName' in attr &&
+      (attr as { fileName?: string }).fileName
+    ) {
+      return (attr as { fileName: string }).fileName;
+    }
+  }
+  return undefined;
+}
+
+/** `DocumentAttributeAnimated` is stored as an empty marker object after conversion. */
+function documentHasAnimatedMarker(document: { attributes?: unknown[] }): boolean {
+  return (document.attributes ?? []).some((attr) => {
+    if (!attr || typeof attr !== 'object') return false;
+    if (Object.keys(attr as object).length === 0) return true;
+    return (attr as { className?: string }).className === 'DocumentAttributeAnimated';
+  });
+}
+
+export function documentIsTelegramGif(
+  document: Document | undefined,
+  isSticker: boolean,
+): boolean {
+  if (!document || isSticker) return false;
+  const mime = document.mimeType?.toLowerCase() || '';
+  if (mime === 'image/gif') return true;
+  if (documentHasStickerAttribute(document)) return false;
+  const fileName = documentFileName(document)?.toLowerCase() ?? '';
+  if (fileName.endsWith('.gif')) return true;
+  if (!documentHasAnimatedMarker(document)) return false;
+  return mime.startsWith('video/') || documentHasVideoAttribute(document);
+}
+
 export type MessagePreviewContent = {
   kind?: MessagePreviewKind;
   thumbs: string[];
@@ -667,6 +704,18 @@ export class Message extends BaseEntityModel<MessageEntity> {
           (attr as { roundMessage?: boolean }).roundMessage,
       ) ?? false
     );
+  }
+
+  get isGif(): boolean {
+    if (this.isEmpty || this.kind !== 'message' || !this.media) return false;
+    if (this.isSticker || this.isRoundVideo || this.isVoice) return false;
+    if (this.videoDocument) {
+      return documentIsTelegramGif(this.videoDocument, false);
+    }
+    if (this.photoDocument) {
+      return documentIsTelegramGif(this.photoDocument, false);
+    }
+    return false;
   }
 
   get videoDocument(): Document | undefined {

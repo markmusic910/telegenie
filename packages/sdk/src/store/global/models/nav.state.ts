@@ -1,3 +1,7 @@
+export type MiddleOverlayFrame =
+  | { kind: 'user'; peerId: string }
+  | { kind: 'dialog'; peerId: string };
+
 /** Persistable nav fields (no computeds, no store refs). */
 export type NavSnapshot = {
   selectedDialogId?: string;
@@ -28,8 +32,12 @@ export interface NavState {
   readonly sortedFolderIds: readonly string[];
   /** Whether Telegram folder tags are shown on chats (Premium feature). */
   readonly folderTagsEnabled: boolean;
-  /** Session-only stack of open User Profile peer IDs in the middle column. */
+  /** Session-only unified overlay stack (user profile + dialog info). */
+  readonly middleOverlayStack: readonly MiddleOverlayFrame[];
+  /** Top overlay frame, or `undefined` when the chat list is fully interactive. */
+  readonly activeMiddleOverlay: MiddleOverlayFrame | undefined;
+  /** User-profile frames in stack order (compat). */
   readonly profilePeerIds: readonly string[];
-  /** Top-most active User Profile peer ID, or `undefined` when no profile overlay is open. */
+  /** Active user profile peer id when the top frame is a user, else `undefined` (compat). */
   readonly activeProfilePeerId: string | undefined;
 }

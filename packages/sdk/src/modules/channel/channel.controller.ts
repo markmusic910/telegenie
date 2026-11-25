@@ -193,4 +193,33 @@ export class ChannelController {
 
     return run;
   }
+
+  @RequestLog()
+  @Method()
+  async join(peerId: string): Promise<void> {
+    const channel = this.sm.has('channel')
+      ? (this.sm.get('channel').get(peerId) as Channel | undefined)
+      : undefined;
+    await this.worker.call('channel.joinChannel', [peerId, channel?.accessHash]);
+    await this.getChannelsByIds([peerId]);
+  }
+
+  @RequestLog()
+  @Method()
+  async leave(peerId: string): Promise<void> {
+    const channel = this.sm.has('channel')
+      ? (this.sm.get('channel').get(peerId) as Channel | undefined)
+      : undefined;
+    await this.worker.call('channel.leaveChannel', [peerId, channel?.accessHash]);
+    await this.getChannelsByIds([peerId]);
+  }
+
+  @RequestLog()
+  @Method()
+  async inviteMembers(peerId: string, userIds: string[]): Promise<void> {
+    const channel = this.sm.has('channel')
+      ? (this.sm.get('channel').get(peerId) as Channel | undefined)
+      : undefined;
+    await this.worker.call('channel.inviteMembers', [peerId, userIds, channel?.accessHash]);
+  }
 }

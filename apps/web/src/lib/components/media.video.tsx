@@ -31,6 +31,9 @@ export interface MediaVideoProps {
   peerId?: string;
   messageId?: number | string;
   observeIntersectionForLoading?: ObserveFn;
+  observeIntersectionForPlaying?: ObserveFn;
+  /** Telegram GIF (mp4 with animated attribute): autoplay muted, loop, no chrome. */
+  isGif?: boolean;
   uploadProgress?: number;
   onAbortUpload?: () => void;
 }
@@ -49,9 +52,15 @@ export default function MediaVideo({
   peerId,
   messageId,
   observeIntersectionForLoading,
+  observeIntersectionForPlaying,
+  isGif = false,
   uploadProgress,
   onAbortUpload,
 }: MediaVideoProps) {
+  const gifMode = isGif;
+  const [gifVisible, setGifVisible] = useState(!observeIntersectionForPlaying);
+  const [containerEl, setContainerEl] = useState<HTMLElement | null>(null);
+
   // Extract video attribute (w, h, duration)
   const videoAttr = document.attributes?.find(
     (a): a is DocumentAttributeVideo => typeof a === 'object' && a !== null && 'duration' in a,
@@ -66,7 +75,24 @@ export default function MediaVideo({
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(shouldAutoPlay);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const { ref: loadRef, canLoad } = useCanLoadMedia(observeIntersectionForLoading);
+  const { ref: assignLoadRef, canLoad } = useCanLoadMedia(observeIntersectionForLoading);
+
+  const assignContainerRef = (node: HTMLDivElement | null) => {
+    setContainerEl(node);
+    assignLoadRef(node);
+  };
+
+  useEffect(() => {
+    if (!gifMode) return;
+    if (!observeIntersectionForPlaying) {
+      setGifVisible(true);
+      return;
+    }
+    if (!containerEl) return;
+    return observeIntersectionForPlaying(containerEl, (visible) => {
+      setGifVisible(visible);
+    });
+  }, [containerEl, gifMode, observeIntersectionForPlaying]);
 
   useEffect(() => {
     if (canLoad && shouldAutoPlay) {
@@ -190,9 +216,73 @@ export default function MediaVideo({
     }
   };
 
+  const gifShouldPlay =
+    gifMode && canLoad && gifVisible && !showSpoiler && Boolean(effectiveStreamUrl);
+
+  useEffect(() => {
+    if (!gifMode) return;
+    const video = videoRef.current;
+    if (!video) return;
+    if (gifShouldPlay) {
+      void video.play().catch(() => undefined);
+    } else {
+      video.pause();
+    }
+  }, [gifMode, gifShouldPlay]);
+
+  if (gifMode) {
+    const poster = effectivePosterUrl || thumbUri;
+    return (
+      <div
+        ref={assignContainerRef}
+        className={cn(
+          'relative overflow-hidden bg-muted/40 select-none',
+          albumCornerRounding,
+          className,
+        )}
+        style={mediaBoxStyle(mediaDims.width, mediaDims.height)}
+      >
+        {gifShouldPlay ? (
+          <video
+            ref={videoRef}
+            src={effectiveStreamUrl}
+            poster={poster}
+            autoPlay
+            muted
+            loop
+            playsInline
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        ) : poster ? (
+          <img
+            src={poster}
+            alt=""
+            width={mediaDims.width}
+            height={mediaDims.height}
+            className="absolute inset-0 h-full w-full object-cover"
+            draggable={false}
+          />
+        ) : (
+          <div className="absolute inset-0 bg-neutral-900" aria-hidden="true" />
+        )}
+
+        {uploadProgress !== undefined ? (
+          <MediaUploadProgress progress={uploadProgress} onAbort={onAbortUpload} />
+        ) : null}
+
+        <MediaSpoiler
+          isVisible={showSpoiler && uploadProgress === undefined}
+          label="GIF spoiler"
+          thumbUri={poster}
+          onReveal={() => setShowSpoiler(false)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div
-      ref={loadRef}
+      ref={assignContainerRef}
       className={cn(
         'relative overflow-hidden bg-muted/40 select-none group',
         albumCornerRounding,

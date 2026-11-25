@@ -17,6 +17,7 @@ import MessageSelectToolbar from '@/components/main/middle-column/message-select
 import MessageList from '@/components/main/middle-column/message.list';
 import PinnedMessageBar from '@/components/main/middle-column/pinned-message.bar';
 import PinnedMessageList from '@/components/main/middle-column/pinned-message.list';
+import DialogInfoView from '@/components/main/middle-column/dialog-info/dialog-info.view';
 import UserProfileView from '@/components/main/middle-column/user-profile/user-profile.view';
 import PeerAvatar from '@/lib/components/peer.avatar';
 import { Button } from '@/lib/components/ui/button';
@@ -43,11 +44,18 @@ const MessagesContainer = observer(({ onToggleConfig, onOpenGenie }: MessagesCon
   const sdk = useSDK();
   const globalStore = useStore('global');
   const selectedDialogId = globalStore.nav.selectedDialogId;
-  const activeProfilePeerId = globalStore.nav.activeProfilePeerId;
+  const activeMiddleOverlay = globalStore.nav.activeMiddleOverlay;
+  const hasMiddleOverlay = globalStore.nav.middleOverlayStack.length > 0;
   const dialog = useStoreEntities('dialog', selectedDialogId);
-  const peer = useDialogPeer(dialog?.peerId ?? selectedDialogId);
-  const peerId = dialog?.peerId ?? selectedDialogId;
-  const display = peerId ? (peer?.display ?? fallbackPeerDisplay(peerId)) : undefined;
+  const effectivePeerId = dialog?.peerId?.trim() || selectedDialogId?.trim() || '';
+  const peer = useDialogPeer(effectivePeerId || null);
+  const display = effectivePeerId
+    ? (peer?.display ?? fallbackPeerDisplay(effectivePeerId))
+    : undefined;
+  const headerTitle =
+    effectivePeerId && selectedDialogId
+      ? display?.name || fallbackPeerDisplay(effectivePeerId).name
+      : 'Select a conversation';
 
   const dialogUI = useGlobalStoreDialog(selectedDialogId);
   const isPinnedViewOpen = Boolean(dialogUI?.isPinnedViewOpen);
@@ -57,13 +65,38 @@ const MessagesContainer = observer(({ onToggleConfig, onOpenGenie }: MessagesCon
   const canEnterSelectMode =
     !isPinnedViewOpen && !isSelectMode && (threadUI?.listedIds.length ?? 0) > 0;
 
-  const peerKind = dialog?.peerKind ?? (peerId ? Dialog.peerKindFromId(peerId) : undefined);
+  const peerKind =
+    dialog?.peerKind ?? (effectivePeerId ? Dialog.peerKindFromId(effectivePeerId) : undefined);
   const channel = peerKind === 'channel' ? (peer as Channel | null) : null;
-  const channelFull = useStoreEntities('channelFull', peerKind === 'channel' ? peerId : null);
+  const channelFull = useStoreEntities(
+    'channelFull',
+    peerKind === 'channel' ? effectivePeerId : null,
+  );
   const chat = peerKind === 'chat' ? (peer as Chat | null) : null;
-  const chatFull = useStoreEntities('chatFull', peerKind === 'chat' ? peerId : null);
+  const chatFull = useStoreEntities('chatFull', peerKind === 'chat' ? effectivePeerId : null);
   const user = peerKind === 'user' ? (peer as User | null) : null;
-  const userFull = useStoreEntities('userFull', peerKind === 'user' ? peerId : null);
+  const userFull = useStoreEntities('userFull', peerKind === 'user' ? effectivePeerId : null);
+
+  useEffect(() => {
+    if (!effectivePeerId) return;
+    if (peerKind === 'channel' && !channel?.title) {
+      void sdk.channel.getChannelsByIds([effectivePeerId]);
+    } else if (
+      peerKind === 'channel' &&
+      channel?.accessHash &&
+      (!channelFull ||
+        (!channel.broadcast &&
+          channelFull.participantsCount == null &&
+          channel.participantsCount == null))
+    ) {
+      void sdk.channel
+        .getFullChannelByIds([{ id: effectivePeerId, accessHash: channel.accessHash }])
+        .catch(() => undefined);
+    } else if (peerKind === 'chat' && !chat) {
+      void sdk.chat.getChatsByIds([effectivePeerId]);
+      void sdk.chat.getFullChatByIds([effectivePeerId]).catch(() => undefined);
+    }
+  }, [channel, channelFull, chat, effectivePeerId, peerKind, sdk.channel, sdk.chat]);
 
   const fullPinnedMsgId =
     channelFull?.pinnedMsgId ?? chatFull?.pinnedMsgId ?? userFull?.pinnedMsgId;
@@ -97,6 +130,8 @@ const MessagesContainer = observer(({ onToggleConfig, onOpenGenie }: MessagesCon
         subtitle = `${formatCompactNumber(members)} ${members === 1 ? 'member' : 'members'}${
           online && online > 0 ? `, ${formatCompactNumber(online)} online` : ''
         }`;
+      } else if (channel && !channelFull) {
+        subtitle = undefined;
       } else {
         subtitle = 'group';
       }
@@ -113,7 +148,10 @@ const MessagesContainer = observer(({ onToggleConfig, onOpenGenie }: MessagesCon
       subtitle = 'group';
     }
   } else if (peerKind === 'user') {
-    if (peerId === SERVICE_NOTIFICATIONS_USER_ID || user?.id === SERVICE_NOTIFICATIONS_USER_ID) {
+    if (
+      effectivePeerId === SERVICE_NOTIFICATIONS_USER_ID ||
+      user?.id === SERVICE_NOTIFICATIONS_USER_ID
+    ) {
       subtitle = 'service notifications';
     } else if (user?.deleted || display?.isDeleted) {
       subtitle = undefined;
@@ -131,7 +169,7 @@ const MessagesContainer = observer(({ onToggleConfig, onOpenGenie }: MessagesCon
   const isOnline = subtitle === 'online';
   const canOpenUserProfile =
     peerKind === 'user' &&
-    Boolean(peerId) &&
+    Boolean(effectivePeerId) &&
     !user?.self &&
     !display?.isSavedMessages &&
     !user?.deleted &&
@@ -141,13 +179,13 @@ const MessagesContainer = observer(({ onToggleConfig, onOpenGenie }: MessagesCon
     (canOpenUserProfile || peerKind === 'chat' || peerKind === 'channel');
 
   const handleHeaderClick = () => {
-    if (!selectedDialogId || !peerId) return;
+    if (!selectedDialogId || !effectivePeerId) return;
     if (canOpenUserProfile) {
-      sdk.user.openProfile(peerId);
+      sdk.user.openProfile(effectivePeerId);
       return;
     }
     if (peerKind === 'chat' || peerKind === 'channel') {
-      onToggleConfig();
+      sdk.dialogInfo.open(effectivePeerId);
     }
   };
 
@@ -155,7 +193,7 @@ const MessagesContainer = observer(({ onToggleConfig, onOpenGenie }: MessagesCon
     <div className="relative flex h-full flex-col overflow-hidden">
       <div
         className="relative flex h-full flex-col overflow-hidden"
-        inert={Boolean(activeProfilePeerId) || undefined}
+        inert={hasMiddleOverlay || undefined}
       >
         <div className="flex h-14 shrink-0 items-center border-b border-border px-4 gap-3">
           <button
@@ -176,9 +214,9 @@ const MessagesContainer = observer(({ onToggleConfig, onOpenGenie }: MessagesCon
                   : undefined
             }
           >
-            {display && peerId && (
+            {display && effectivePeerId && (
               <PeerAvatar
-                peerId={peerId}
+                peerId={effectivePeerId}
                 display={display}
                 photo={peer?.photo}
                 className="size-9 text-xs shrink-0"
@@ -186,10 +224,10 @@ const MessagesContainer = observer(({ onToggleConfig, onOpenGenie }: MessagesCon
             )}
             <div className="flex min-w-0 flex-1 flex-col justify-center">
               <span className="flex min-w-0 items-baseline gap-1.5 text-sm font-semibold text-foreground leading-tight">
-                <span className="truncate">{display?.name || 'Select a conversation'}</span>
-                {process.env.NODE_ENV === 'development' && peerId ? (
+                <span className="truncate">{headerTitle}</span>
+                {process.env.NODE_ENV === 'development' && effectivePeerId ? (
                   <span className="shrink-0 font-mono text-[11px] font-normal text-muted-foreground">
-                    {peerId}
+                    {effectivePeerId}
                   </span>
                 ) : null}
               </span>
@@ -331,20 +369,23 @@ const MessagesContainer = observer(({ onToggleConfig, onOpenGenie }: MessagesCon
       )}
       </div>
 
-      {/* User Profile View (Slides over the entire middle column, matching official desktop) */}
       <AnimatePresence>
-        {activeProfilePeerId && (
+        {activeMiddleOverlay ? (
           <motion.div
-            key={`user-profile-${activeProfilePeerId}`}
+            key={`${activeMiddleOverlay.kind}-${activeMiddleOverlay.peerId}`}
             initial={{ x: '100%', opacity: 0.85 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: '100%', opacity: 0.85 }}
             transition={{ type: 'spring', damping: 28, stiffness: 280 }}
             className="absolute inset-0 z-40 flex flex-col bg-background"
           >
-            <UserProfileView peerId={activeProfilePeerId} />
+            {activeMiddleOverlay.kind === 'user' ? (
+              <UserProfileView peerId={activeMiddleOverlay.peerId} />
+            ) : (
+              <DialogInfoView peerId={activeMiddleOverlay.peerId} />
+            )}
           </motion.div>
-        )}
+        ) : null}
       </AnimatePresence>
     </div>
   );

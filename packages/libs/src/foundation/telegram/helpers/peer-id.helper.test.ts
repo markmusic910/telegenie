@@ -8,6 +8,7 @@ import {
   getEntityTypeById,
   getPeerId,
   markedChannelIdFromMtp,
+  resolvePersonalChannelPeerId,
   markedPeerIdFromApiPeer,
   mtpChannelIdFromPeerId,
   peerIdFromMessage,
@@ -19,6 +20,15 @@ describe('mtpChannelIdFromPeerId', () => {
     // GramJS utils.getPeerId style (`-100` + mtpId) is not accepted in foundation
     expect(mtpChannelIdFromPeerId('-100777')).toBeUndefined();
     expect(mtpChannelIdFromPeerId('42')).toBeUndefined();
+  });
+});
+
+describe('resolvePersonalChannelPeerId', () => {
+  it('marks MTProto channel ids and keeps bot API channel ids', () => {
+    expect(resolvePersonalChannelPeerId('10')).toBe('-1000000000010');
+    expect(resolvePersonalChannelPeerId('5642417267')).toBe('-1005642417267');
+    expect(resolvePersonalChannelPeerId('-1000000000777')).toBe('-1000000000777');
+    expect(resolvePersonalChannelPeerId('')).toBe('');
   });
 });
 

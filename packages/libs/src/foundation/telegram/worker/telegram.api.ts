@@ -288,6 +288,18 @@ export type TelegramWorkerApi = {
       count: number;
     };
   };
+  'channel.joinChannel': {
+    args: [channelId: string, accessHash?: string];
+    result: void;
+  };
+  'channel.leaveChannel': {
+    args: [channelId: string, accessHash?: string];
+    result: void;
+  };
+  'channel.inviteMembers': {
+    args: [channelId: string, userIds: string[], accessHash?: string];
+    result: void;
+  };
 
   'user.getMe': { args: []; result: User };
   'user.getContacts': { args: []; result: Record<string, User> };
@@ -348,6 +360,15 @@ export type TelegramWorkerApi = {
   };
   'message.getPinnedMessages': {
     args: [peerId: string, limit?: number, offsetId?: number];
+    result: PinnedMessagesResult;
+  };
+  'message.searchInPeer': {
+    args: [
+      peerId: string,
+      tab: 'media' | 'files' | 'links' | 'voice' | 'gifs',
+      offsetId?: number,
+      limit?: number,
+    ];
     result: PinnedMessagesResult;
   };
   'message.unpinAllMessages': { args: [peerId: string]; result: void };

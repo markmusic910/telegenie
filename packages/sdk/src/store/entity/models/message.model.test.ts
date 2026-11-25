@@ -489,6 +489,7 @@ describe('Message preview helpers', () => {
 
     expect(animatedStickerMsg.isSticker).toBe(true);
     expect(animatedStickerMsg.isAnimatedSticker).toBe(true);
+    expect(animatedStickerMsg.isGif).toBe(false);
     expect(animatedStickerMsg.isStaticSticker).toBe(false);
     expect(animatedStickerMsg.isDocument).toBe(false);
     expect(animatedStickerMsg.previewKind).toBe('sticker');
@@ -523,6 +524,26 @@ describe('Message preview helpers', () => {
     expect(videoStickerMsg.isDocument).toBe(false);
     expect(videoStickerMsg.previewKind).toBe('sticker');
     expect(videoStickerMsg.summaryText).toBe('🔥 Sticker');
+
+    const gifMsg = sampleMessage({
+      media: {
+        video: true,
+        document: {
+          id: '900',
+          accessHash: '901',
+          fileReference: '',
+          date: 6003,
+          mimeType: 'video/mp4',
+          size: '12000',
+          dcId: 2,
+          attributes: [{ w: 480, h: 480, duration: 3 }, {}, { fileName: 'fun.gif.mp4' }],
+        },
+      },
+    });
+
+    expect(gifMsg.isGif).toBe(true);
+    expect(gifMsg.isSticker).toBe(false);
+    expect(gifMsg.isVideo).toBe(true);
   });
 });
 

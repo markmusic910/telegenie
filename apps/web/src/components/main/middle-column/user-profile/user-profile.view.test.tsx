@@ -27,6 +27,10 @@ jest.mock('@telegenie/libs/foundation/telegram/helpers', () => ({
   getEntityTypeById: (id: string) =>
     id.startsWith('-1000000') ? 'channel' : id.startsWith('-') ? 'chat' : 'user',
   markedChannelIdFromMtp: (id: string) => String(-1_000_000_000_000 - Number(id)),
+  resolvePersonalChannelPeerId: (id: string) =>
+    id.startsWith('-100')
+      ? id
+      : String(-1_000_000_000_000 - Number(id)),
 }));
 
 jest.mock('@telegenie/sdk', () => ({

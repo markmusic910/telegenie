@@ -425,4 +425,80 @@ export class ChannelService {
       count: result.count ?? participantIds.length,
     };
   };
+
+  joinChannel = async (channelId: string, accessHash?: string): Promise<void> => {
+    if (!this.client) {
+      throw new Error('Client not initialized');
+    }
+    let hash = accessHash;
+    if (!hash) {
+      const row = await this.localDb?.getChannelRow(channelId);
+      hash = row?.entity.accessHash;
+    }
+    if (!hash) {
+      throw new Error('Channel access hash required to join');
+    }
+    await this.client.invoke(
+      new Api.channels.JoinChannel({
+        channel: buildInputEntity(channelId, hash) as Api.InputChannel,
+      }),
+    );
+  };
+
+  leaveChannel = async (channelId: string, accessHash?: string): Promise<void> => {
+    if (!this.client) {
+      throw new Error('Client not initialized');
+    }
+    let hash = accessHash;
+    if (!hash) {
+      const row = await this.localDb?.getChannelRow(channelId);
+      hash = row?.entity.accessHash;
+    }
+    if (!hash) {
+      throw new Error('Channel access hash required to leave');
+    }
+    await this.client.invoke(
+      new Api.channels.LeaveChannel({
+        channel: buildInputEntity(channelId, hash) as Api.InputChannel,
+      }),
+    );
+  };
+
+  inviteMembers = async (
+    channelId: string,
+    userIds: string[],
+    accessHash?: string,
+  ): Promise<void> => {
+    if (!this.client) {
+      throw new Error('Client not initialized');
+    }
+    const uniqueIds = [...new Set(userIds.map((id) => id.trim()).filter(Boolean))];
+    if (uniqueIds.length === 0) {
+      return;
+    }
+
+    let hash = accessHash;
+    if (!hash) {
+      const row = await this.localDb?.getChannelRow(channelId);
+      hash = row?.entity.accessHash;
+    }
+    if (!hash) {
+      throw new Error('Channel access hash required to invite members');
+    }
+
+    const inputUsers = await resolveInputUsers(
+      this.localDb,
+      uniqueIds.map((id) => ({ id })),
+    );
+    const invited = await this.client.invoke(
+      new Api.channels.InviteToChannel({
+        channel: buildInputEntity(channelId, hash) as Api.InputChannel,
+        users: inputUsers,
+      }),
+    );
+
+    if (this.updateManager && invited instanceof Api.messages.InvitedUsers) {
+      await this.updateManager.process(invited.updates, 'rpc');
+    }
+  };
 }

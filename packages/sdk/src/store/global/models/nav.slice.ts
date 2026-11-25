@@ -2,7 +2,7 @@ import { toJS } from 'mobx';
 import { ALL_CHATS_FOLDER_ID } from '../../../modules/dialog-filter/dialog-filter.constants';
 import type { GlobalStore } from '../global.store';
 import { GlobalStoreSlice } from '../global-store.slice';
-import type { NavSnapshot, NavState } from './nav.state';
+import type { MiddleOverlayFrame, NavSnapshot, NavState } from './nav.state';
 
 function stringIds(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
@@ -35,8 +35,8 @@ export class NavSlice extends GlobalStoreSlice implements NavState {
   /** Whether Telegram folder tags are shown on chats (Premium feature). */
   folderTagsEnabled: boolean = false;
 
-  /** Session-only stack of open User Profile peer IDs in the middle column. */
-  profilePeerIds: string[] = [];
+  /** Session-only unified middle-column overlay stack. */
+  middleOverlayStack: MiddleOverlayFrame[] = [];
 
   private readonly globalStore: GlobalStore;
 
@@ -46,29 +46,55 @@ export class NavSlice extends GlobalStoreSlice implements NavState {
     this.observe({ globalStore: false });
   }
 
-  get activeProfilePeerId(): string | undefined {
-    return this.profilePeerIds.length > 0
-      ? this.profilePeerIds[this.profilePeerIds.length - 1]
+  get activeMiddleOverlay(): MiddleOverlayFrame | undefined {
+    return this.middleOverlayStack.length > 0
+      ? this.middleOverlayStack[this.middleOverlayStack.length - 1]
       : undefined;
   }
 
-  pushProfilePeerId = (peerId: string) => {
-    const trimmed = peerId.trim();
+  get profilePeerIds(): string[] {
+    return this.middleOverlayStack
+      .filter((frame): frame is MiddleOverlayFrame & { kind: 'user' } => frame.kind === 'user')
+      .map((frame) => frame.peerId);
+  }
+
+  get activeProfilePeerId(): string | undefined {
+    const top = this.activeMiddleOverlay;
+    return top?.kind === 'user' ? top.peerId : undefined;
+  }
+
+  pushMiddleOverlay = (frame: MiddleOverlayFrame) => {
+    const trimmed = frame.peerId.trim();
     if (!trimmed) return;
-    if (this.activeProfilePeerId === trimmed) return;
-    this.profilePeerIds = [...this.profilePeerIds, trimmed];
+    const next: MiddleOverlayFrame = { kind: frame.kind, peerId: trimmed };
+    const top = this.activeMiddleOverlay;
+    if (top && top.kind === next.kind && top.peerId === next.peerId) return;
+    this.middleOverlayStack = [...this.middleOverlayStack, next];
   };
 
-  popProfilePeerId = (): string | undefined => {
-    if (this.profilePeerIds.length === 0) return undefined;
-    const popped = this.profilePeerIds[this.profilePeerIds.length - 1];
-    this.profilePeerIds = this.profilePeerIds.slice(0, -1);
+  popMiddleOverlay = (): MiddleOverlayFrame | undefined => {
+    if (this.middleOverlayStack.length === 0) return undefined;
+    const popped = this.middleOverlayStack[this.middleOverlayStack.length - 1];
+    this.middleOverlayStack = this.middleOverlayStack.slice(0, -1);
     return popped;
   };
 
+  clearMiddleOverlay = () => {
+    if (this.middleOverlayStack.length === 0) return;
+    this.middleOverlayStack = [];
+  };
+
+  pushProfilePeerId = (peerId: string) => {
+    this.pushMiddleOverlay({ kind: 'user', peerId });
+  };
+
+  popProfilePeerId = (): string | undefined => {
+    const popped = this.popMiddleOverlay();
+    return popped?.peerId;
+  };
+
   clearProfilePeerIds = () => {
-    if (this.profilePeerIds.length === 0) return;
-    this.profilePeerIds = [];
+    this.clearMiddleOverlay();
   };
 
   setSelectedDialogId = (dialogId: string | undefined) => {
@@ -81,9 +107,9 @@ export class NavSlice extends GlobalStoreSlice implements NavState {
           thread.clearSelection();
         }
       }
-      this.clearProfilePeerIds();
+      this.clearMiddleOverlay();
     } else if (!dialogId) {
-      this.clearProfilePeerIds();
+      this.clearMiddleOverlay();
     }
     this.selectedDialogId = dialogId;
   };

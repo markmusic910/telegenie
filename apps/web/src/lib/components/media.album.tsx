@@ -17,6 +17,7 @@ export interface MediaAlbumProps {
   maxWidth?: number;
   className?: string;
   observeIntersectionForLoading?: ObserveFn;
+  observeIntersectionForPlaying?: ObserveFn;
 }
 
 function albumHasSourceDimensions(album: MessageAlbum): boolean {
@@ -54,6 +55,7 @@ const MediaAlbum = observer(function MediaAlbum({
   maxWidth = 420,
   className,
   observeIntersectionForLoading,
+  observeIntersectionForPlaying,
 }: MediaAlbumProps) {
   const sdk = useSDK();
   const { containerStyle, layout } = useStableAlbumLayout(album, maxWidth);
@@ -124,9 +126,13 @@ const MediaAlbum = observer(function MediaAlbum({
                 sides={sides}
                 isInAlbum
                 isSpoiler={message.hasSpoiler}
+                isGif={message.isGif}
                 peerId={message.peerId}
                 messageId={Number(message.id)}
                 observeIntersectionForLoading={observeIntersectionForLoading}
+                observeIntersectionForPlaying={
+                  message.isGif ? observeIntersectionForPlaying : undefined
+                }
                 uploadProgress={uploadProgress}
                 onAbortUpload={onAbortUpload}
               />

@@ -7,6 +7,7 @@ import MessageItem from '@/lib/components/message.item';
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
 const openProfileMock = jest.fn();
+const openDialogInfoMock = jest.fn();
 const onToggleConfigMock = jest.fn();
 
 let mockSelectedDialogId: string | undefined = '208589966';
@@ -62,6 +63,11 @@ jest.mock('@/components/main/middle-column/user-profile/user-profile.view', () =
   default: ({ peerId }: { peerId: string }) => <div data-testid={`profile-overlay-${peerId}`} />,
 }));
 
+jest.mock('@/components/main/middle-column/dialog-info/dialog-info.view', () => ({
+  __esModule: true,
+  default: ({ peerId }: { peerId: string }) => <div data-testid={`dialog-info-overlay-${peerId}`} />,
+}));
+
 jest.mock('@/lib/components/peer.avatar', () => ({
   __esModule: true,
   default: ({ peerId }: { peerId: string }) => <div data-testid={`avatar-${peerId}`} />,
@@ -95,6 +101,17 @@ jest.mock('@/lib/contexts/sdk.context', () => ({
     user: {
       openProfile: openProfileMock,
     },
+    dialogInfo: {
+      open: openDialogInfoMock,
+    },
+    channel: {
+      getChannelsByIds: jest.fn(() => Promise.resolve()),
+      getFullChannelByIds: jest.fn(() => Promise.resolve()),
+    },
+    chat: {
+      getChatsByIds: jest.fn(() => Promise.resolve()),
+      getFullChatByIds: jest.fn(() => Promise.resolve()),
+    },
     messageLoad: {
       loadPinnedMessages: jest.fn(),
       closePinnedView: jest.fn(),
@@ -116,6 +133,16 @@ jest.mock('@/lib/contexts/sdk.context', () => ({
       },
       get activeProfilePeerId() {
         return mockActiveProfilePeerId;
+      },
+      get activeMiddleOverlay() {
+        return mockActiveProfilePeerId
+          ? { kind: 'user' as const, peerId: mockActiveProfilePeerId }
+          : undefined;
+      },
+      get middleOverlayStack() {
+        return mockActiveProfilePeerId
+          ? [{ kind: 'user' as const, peerId: mockActiveProfilePeerId }]
+          : [];
       },
     },
   }),
@@ -199,7 +226,19 @@ describe('User Profile entry points', () => {
     root = null;
   });
 
-  it('opens user profile when clicking user dialog header, skips Saved Messages, and toggles config on channels', () => {
+  it('shows channel title when dialog peerId is empty but selectedDialogId is set', () => {
+    mockSelectedDialogId = '-100123';
+    mockDialogs = {
+      '-100123': { peerId: '', peerKind: 'channel' },
+    };
+    act(() => {
+      root?.render(<MessagesContainer onToggleConfig={onToggleConfigMock} />);
+    });
+    expect(container.textContent).toContain('Dev Channel');
+    expect(container.textContent).not.toContain('Select a conversation');
+  });
+
+  it('opens user profile when clicking user dialog header, skips Saved Messages, and opens dialog info on channels', () => {
     act(() => {
       root?.render(<MessagesContainer onToggleConfig={onToggleConfigMock} />);
     });
@@ -227,7 +266,7 @@ describe('User Profile entry points', () => {
     });
     expect(openProfileMock).not.toHaveBeenCalled();
 
-    // Channel header toggles right-column config
+    openDialogInfoMock.mockClear();
     mockSelectedDialogId = '-100123';
     act(() => {
       root?.render(<MessagesContainer key="channel" onToggleConfig={onToggleConfigMock} />);
@@ -236,7 +275,8 @@ describe('User Profile entry points', () => {
     act(() => {
       channelHeaderBtn.click();
     });
-    expect(onToggleConfigMock).toHaveBeenCalledTimes(1);
+    expect(openDialogInfoMock).toHaveBeenCalledWith('-100123');
+    expect(onToggleConfigMock).not.toHaveBeenCalled();
   });
 
   it('opens member user profile when clicking sender avatar or sender name in a group/channel message', () => {

@@ -20,6 +20,7 @@ import { ChatController } from './modules/chat/chat.controller';
 import { ConversionService } from './modules/common/services/convert.service';
 import { DialogFilterController } from './modules/dialog-filter/dialog-filter.controller';
 import { DialogController } from './modules/dialog/dialog.controller';
+import { DialogInfoController } from './modules/dialog-info/dialog-info.controller';
 import { EncryptedChatController } from './modules/encrypted-chat/encrypted-chat.controller';
 import { MessageDraftController } from './modules/message/message-draft.controller';
 import { MessageLoadController } from './modules/message/message-load.controller';
@@ -135,6 +136,7 @@ export class TeleGenieSDK {
   readonly auth: AuthController;
   readonly chat: ChatController;
   readonly channel: ChannelController;
+  readonly dialogInfo: DialogInfoController;
   readonly dialog: DialogController;
   readonly dialogFilter: DialogFilterController;
   readonly messageLoad: MessageLoadController;
@@ -221,6 +223,17 @@ export class TeleGenieSDK {
       globalStore: this.globalStore,
       debug: this.debug,
       worker: this.worker,
+    });
+    this.dialogInfo = new DialogInfoController({
+      sm: this.store,
+      globalStore: this.globalStore,
+      debug: this.debug,
+      worker: this.worker,
+      ensureMessageStore,
+      getChannelsByIds: (ids) => this.channel.getChannelsByIds(ids),
+      getFullChannelByIds: (options) => this.channel.getFullChannelByIds(options),
+      getChatsByIds: (ids) => this.chat.getChatsByIds(ids),
+      getFullChatByIds: (ids, opts) => this.chat.getFullChatByIds(ids, opts),
     });
     this.messageDraft = new MessageDraftController({
       worker: this.worker,

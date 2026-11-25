@@ -129,6 +129,19 @@ export function markedChannelIdFromMtp(channelId: { toString(): string }): strin
 }
 
 /**
+ * Resolve `UserFull.personalChannelId` (MTProto channel id or marked Bot API id) to a dialog id.
+ * Positive MTProto ids must not pass through `getEntityTypeById` alone — they look like users.
+ */
+export function resolvePersonalChannelPeerId(rawChannelId: string): string {
+  const trimmed = rawChannelId.trim();
+  if (!trimmed) return '';
+  if (getEntityTypeById(trimmed) === 'channel') {
+    return trimmed;
+  }
+  return markedChannelIdFromMtp(trimmed);
+}
+
+/**
  * Mark an `Api.TypeInputPeer` using Bot API / TDLib dialog id rules.
  *
  * `InputPeerSelf` needs `selfId` to resolve; `InputPeerEmpty` and the

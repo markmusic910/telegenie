@@ -35,6 +35,7 @@ export {
   getEntityTypeById,
   getPeerId,
   markedChannelIdFromMtp,
+  resolvePersonalChannelPeerId,
   markedPeerIdFromApiInputPeer,
   markedPeerIdFromApiPeer,
   mtpChannelIdFromPeerId,

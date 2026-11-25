@@ -142,6 +142,15 @@ export function createTelegramWorkerHandlers(
     'channel.getParticipants': async (channelId, options) => {
       return tg.getChannelService().getParticipants(channelId, options);
     },
+    'channel.joinChannel': async (channelId, accessHash) => {
+      await tg.getChannelService().joinChannel(channelId, accessHash);
+    },
+    'channel.leaveChannel': async (channelId, accessHash) => {
+      await tg.getChannelService().leaveChannel(channelId, accessHash);
+    },
+    'channel.inviteMembers': async (channelId, userIds, accessHash) => {
+      await tg.getChannelService().inviteMembers(channelId, userIds, accessHash);
+    },
 
     'user.getMe': async () => {
       return tg.getUserService().getMe();
@@ -194,6 +203,14 @@ export function createTelegramWorkerHandlers(
     },
     'message.getPinnedMessages': async (peerId, limit, offsetId) => {
       return tg.getMessageService().getPinnedMessages(peerId, limit, offsetId);
+    },
+    'message.searchInPeer': async (peerId, tab, offsetId, limit) => {
+      return tg.getMessageService().searchPeerMessages(
+        peerId,
+        tab,
+        offsetId ?? 0,
+        limit ?? 50,
+      );
     },
     'message.unpinAllMessages': async (peerId) => {
       return tg.getMessageService().unpinAllMessages(peerId);
