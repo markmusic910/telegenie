@@ -2,7 +2,7 @@
 
 import { observer } from 'mobx-react-lite';
 import { AnimatePresence, motion } from 'motion/react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 
 import GenieGlobalContainer from '@/components/genie/genie-global.container';
@@ -13,21 +13,24 @@ import RightColumnContainer, {
   type RightColumnView,
 } from '@/components/main/right-column/right-column.container';
 import { useSDK, useStore } from '@/lib/contexts/sdk.context';
-import { dialogHref } from '@/lib/utils/dialog-url';
+import { contactsHref, dialogHref, isContactsPathname } from '@/lib/utils/dialog-url';
 
 /**
  * MainPage
  *
- * Coordinates LeftColumn (dialogs), MiddleColumn (messages or Genie Global View),
+ * Coordinates LeftColumn (dialogs or contacts), MiddleColumn (messages or Genie Global View),
  * and RightColumn (Genie Copilot or Dialog Config).
  *
- * Mounted inside `app/(main)/(chats)/layout.tsx` so navigating between `/` and
- * `/chat/[dialogId]` keeps the layout, dialog list, and scroll state intact.
+ * Mounted inside `app/(main)/(chats)/layout.tsx` so navigating between `/`,
+ * `/chat/[dialogId]`, `/contacts`, and `/contacts/[dialogId]` keeps the layout,
+ * message view, and scroll state intact.
  */
 const MainPage = observer(() => {
   const sdk = useSDK();
   const globalStore = useStore('global');
   const router = useRouter();
+  const pathname = usePathname();
+  const isContacts = isContactsPathname(pathname);
   const params = useParams<{ dialogId?: string | string[] }>();
   const rawDialogId = Array.isArray(params?.dialogId) ? params.dialogId[0] : params?.dialogId;
   let dialogId: string | undefined;
@@ -44,7 +47,7 @@ const MainPage = observer(() => {
   const wasGenieOpenBeforeGlobal = useRef(false);
 
   // Sync Next.js route param -> store (handles direct links and Back/Forward),
-  // or redirect `/` to `/chat/<selectedDialogId>` when restored from cache.
+  // or redirect `/` / `/contacts` to include `<selectedDialogId>` when restored from cache.
   useEffect(() => {
     if (dialogId) {
       if (globalStore.nav.selectedDialogId !== dialogId) {
@@ -55,9 +58,9 @@ const MainPage = observer(() => {
 
     const restoredId = globalStore.nav.selectedDialogId;
     if (restoredId) {
-      router.replace(dialogHref(restoredId));
+      router.replace(isContacts ? contactsHref(restoredId) : dialogHref(restoredId));
     }
-  }, [dialogId, globalStore, router, sdk.messageLoad]);
+  }, [dialogId, globalStore, isContacts, router, sdk.messageLoad]);
 
   function toggleConfig() {
     const panel = configPanelRef.current;
@@ -107,7 +110,7 @@ const MainPage = observer(() => {
   return (
     <MainLayout
       configPanelRef={configPanelRef}
-      dialogSlot={<LeftColumnContainer />}
+      dialogSlot={<LeftColumnContainer mode={isContacts ? 'contacts' : 'dialogs'} />}
       messagesSlot={
         <div className="relative h-full w-full overflow-hidden">
           <AnimatePresence mode="wait" initial={false}>

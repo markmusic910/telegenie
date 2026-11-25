@@ -2,7 +2,7 @@
 
 import { useStore } from '@/lib/contexts/sdk.context';
 import { cn } from '@/lib/utils';
-import { dialogHref, isChatsPathname } from '@/lib/utils/dialog-url';
+import { contactsHref, dialogHref, isChatsPathname, isContactsPathname } from '@/lib/utils/dialog-url';
 import { MessagesSquare, Settings, UserRound } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 
@@ -15,7 +15,7 @@ export default function AppNavBar() {
   const pathname = usePathname();
   const globalStore = useStore('global');
 
-  const contacts = pathname.startsWith('/contacts');
+  const contacts = isContactsPathname(pathname);
   const chats = isChatsPathname(pathname);
   const settings = pathname.startsWith('/settings');
 
@@ -24,7 +24,11 @@ export default function AppNavBar() {
       className="flex h-12 shrink-0 items-center justify-around border-t border-border bg-card px-4"
       aria-label="Main"
     >
-      <NavItem label="Contacts" active={contacts} onClick={() => router.push('/contacts')}>
+      <NavItem
+        label="Contacts"
+        active={contacts}
+        onClick={() => router.push(contactsHref(globalStore.nav.selectedDialogId))}
+      >
         <UserRound size={20} strokeWidth={1.75} />
       </NavItem>
       <NavItem
