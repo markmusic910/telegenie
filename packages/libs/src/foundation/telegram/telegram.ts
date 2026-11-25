@@ -379,6 +379,10 @@ export class Telegram {
         debug: this.debug,
         transportService: this.transportService,
         localDb: this.localDb,
+        updateManager: this.updateManager,
+        onStoreUpdate: (payload) => {
+          this.fanOutStoreUpdate(payload);
+        },
       });
     }
     return this.userService;
@@ -420,6 +424,7 @@ export class Telegram {
     }
     if (this.userService) {
       this.userService.localDb = this.localDb;
+      this.userService.updateManager = this.updateManager;
     }
     if (this.encryptedChatService) {
       this.encryptedChatService.localDb = this.localDb;
@@ -489,6 +494,9 @@ export class Telegram {
       this.updateManager.onAny((_event, update) => {
         const payloads = toStoreSyncPayloads(update);
         for (const payload of payloads) {
+          if (payload.type === 'peerBlocked' && this.localDb) {
+            void this.localDb.invalidateUserFull(payload.peerId);
+          }
           this.dialogOrderTracker.apply(payload);
           this.fanOutStoreUpdate(payload);
         }

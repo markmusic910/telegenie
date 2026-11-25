@@ -181,6 +181,7 @@ const PinnedMessageList = observer(function PinnedMessageList({
                         isLastInGroup={true}
                         showAvatar={isGroup}
                         showSenderName={isGroup}
+                        senderPeerId={message.fromId || message.peerId}
                         readOutboxMaxId={dialog?.readOutboxMaxId}
                         className="w-fit px-0 [&>div:last-child]:max-w-none"
                       />

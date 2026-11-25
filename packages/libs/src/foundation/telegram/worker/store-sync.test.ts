@@ -263,6 +263,23 @@ describe('toStoreSyncPayloads', () => {
     ]);
   });
 
+  it('maps UpdatePeerBlocked to peerBlocked payload', () => {
+    expect(
+      toStoreSyncPayloads(
+        new Api.UpdatePeerBlocked({
+          peerId: new Api.PeerUser({ userId: bigInt(208589966) }),
+          blocked: true,
+        }),
+      ),
+    ).toEqual([
+      {
+        type: 'peerBlocked',
+        peerId: '208589966',
+        blocked: true,
+      },
+    ]);
+  });
+
   it('returns empty for ignored constructors', () => {
     expect(
       toStoreSyncPayloads(

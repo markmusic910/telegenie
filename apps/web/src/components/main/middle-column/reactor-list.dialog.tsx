@@ -145,6 +145,10 @@ export default function ReactorListDialog({
             reactions={items}
             loading={loading && !items.length}
             showTime
+            onSelectPeer={(reactorPeerId) => {
+              onOpenChange(false);
+              sdk.user.openProfile(reactorPeerId);
+            }}
           />
           <div ref={sentinelRef} className="h-px" aria-hidden />
         </div>

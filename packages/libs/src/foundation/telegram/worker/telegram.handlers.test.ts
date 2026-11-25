@@ -67,6 +67,10 @@ function mockTelegram(overrides: Record<string, unknown> = {}) {
       users: {},
     }),
     resolveUsername: jest.fn().mockResolvedValue(undefined),
+    addContact: jest.fn().mockResolvedValue({}),
+    deleteContact: jest.fn().mockResolvedValue({}),
+    setBlocked: jest.fn().mockResolvedValue(undefined),
+    setPeerMuted: jest.fn().mockResolvedValue({ muteUntil: 0 }),
   };
   const message = {
     getMessages: jest.fn().mockResolvedValue([[], 0]),
@@ -116,6 +120,7 @@ function mockTelegram(overrides: Record<string, unknown> = {}) {
     _dialog: dialog,
     _dialogFilter: dialogFilter,
     _message: message,
+    _user: user,
   } as any;
 }
 
@@ -239,5 +244,30 @@ describe('createTelegramWorkerHandlers', () => {
     const items = [{ peerId: '1', photoId: '2', dcId: 2 }];
     await handlers['file.downloadPeerPhotos'](items);
     expect(downloadPeerPhotos).toHaveBeenCalledWith(items);
+  });
+
+  it('delegates user profile RPC handlers', async () => {
+    const tg = mockTelegram();
+    const handlers = createTelegramWorkerHandlers(tg);
+
+    await handlers['user.getFullUsers']([{ id: '42', accessHash: '2' }], { forceRefresh: true });
+    expect(tg._user.getFullUsers).toHaveBeenCalledWith([{ id: '42', accessHash: '2' }], {
+      forceRefresh: true,
+    });
+
+    await handlers['user.getFullUsersByIds'](['42'], { forceRefresh: true });
+    expect(tg._user.getFullUsersByIds).toHaveBeenCalledWith(['42'], { forceRefresh: true });
+
+    await handlers['user.addContact']({ id: '42', firstName: 'Ada' });
+    expect(tg._user.addContact).toHaveBeenCalledWith({ id: '42', firstName: 'Ada' });
+
+    await handlers['user.deleteContact']({ id: '42' });
+    expect(tg._user.deleteContact).toHaveBeenCalledWith({ id: '42' });
+
+    await handlers['user.setBlocked']({ id: '42', blocked: true });
+    expect(tg._user.setBlocked).toHaveBeenCalledWith({ id: '42', blocked: true });
+
+    await handlers['user.setPeerMuted']({ peerId: '42', muted: true });
+    expect(tg._user.setPeerMuted).toHaveBeenCalledWith({ peerId: '42', muted: true });
   });
 });

@@ -93,6 +93,11 @@ export type StoreSyncPayload =
       notifySettings: TypePeerNotifySettings;
     }
   | {
+      type: 'peerBlocked';
+      peerId: string;
+      blocked: boolean;
+    }
+  | {
       type: 'folderPeer';
       peerId: string;
       folderId: number;
@@ -350,6 +355,12 @@ export function toStoreSyncPayloads(update: object): StoreSyncPayload[] {
         notifySettings: convertTypePeerNotifySettings(update.notifySettings),
       },
     ];
+  }
+  if (update instanceof Api.UpdatePeerBlocked) {
+    if (!update.peerId) return [];
+    const peerId = markedPeerIdFromApiPeer(update.peerId);
+    if (!peerId) return [];
+    return [{ type: 'peerBlocked', peerId, blocked: Boolean(update.blocked) }];
   }
   if (update instanceof Api.UpdateFolderPeers) {
     const payloads: StoreSyncPayload[] = [];

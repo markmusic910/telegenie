@@ -9,7 +9,7 @@ import type {
   TypeMessagePeerReaction,
   TypeReaction,
 } from '@telegenie/libs/foundation/telegram/types/api-types';
-import { fallbackPeerDisplay, peerProfileDisplay } from '@telegenie/sdk';
+import { Dialog, fallbackPeerDisplay, peerProfileDisplay } from '@telegenie/sdk';
 import { observer } from 'mobx-react-lite';
 
 const ROW_H = 44;
@@ -44,64 +44,89 @@ function peerIdFromTypePeer(peer?: TypePeer | null): string | undefined {
 const ReactorRow = observer(function ReactorRow({
   item,
   showTime,
+  onSelectPeer,
 }: {
   item: TypeMessagePeerReaction;
   showTime: boolean;
+  onSelectPeer?: (peerId: string) => void;
 }) {
   const peerId = peerIdFromTypePeer(item.peerId);
   const peer = useDialogPeer(peerId);
   const display = peer ? peerProfileDisplay(peer) : fallbackPeerDisplay(peerId ?? '');
   const name = display.name || peerId || 'Unknown';
   const emoji = reactionGlyph(item.reaction);
+  const clickable = Boolean(
+    onSelectPeer && peerId && Dialog.peerKindFromId(peerId) === 'user' && !display.isDeleted,
+  );
+
+  const content = (
+    <>
+      <PeerAvatar
+        peerId={peerId}
+        display={display}
+        photo={peer?.photo}
+        className="size-9 shrink-0 text-[10px]"
+      />
+      {showTime ? (
+        <>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm leading-tight">{name}</p>
+            <p className="truncate text-xs text-muted-foreground">
+              {formatReactionTimestamp(item.date)}
+            </p>
+          </div>
+          <span className="w-7 shrink-0 text-center text-xl leading-none">{emoji}</span>
+        </>
+      ) : (
+        <div className="relative min-w-0 flex-1 overflow-hidden" style={{ height: ROW_H }}>
+          <div
+            className={cn(
+              'flex flex-col transition-transform duration-200 ease-out motion-reduce:transition-none',
+              'group-hover/reactor:-translate-y-1/2 group-focus-within/reactor:-translate-y-1/2',
+            )}
+            style={{ height: ROW_H * 2 }}
+          >
+            <div className="flex items-center gap-2" style={{ height: ROW_H }}>
+              <span className="min-w-0 flex-1 truncate text-sm leading-tight">{name}</span>
+              <span className="w-7 shrink-0 text-center text-xl leading-none">{emoji}</span>
+            </div>
+            <div
+              className="flex items-center truncate text-xs text-muted-foreground"
+              style={{ height: ROW_H }}
+            >
+              {formatReactionTimestamp(item.date)}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
 
   return (
     <li className="group/reactor px-1">
-      <div
-        className={cn(
-          'flex items-center gap-3 rounded-lg px-2 transition-colors',
-          'hover:bg-accent/90 group-focus-within/reactor:bg-accent/90',
-        )}
-        style={{ height: showTime ? 52 : ROW_H }}
-      >
-        <PeerAvatar
-          peerId={peerId}
-          display={display}
-          photo={peer?.photo}
-          className="size-9 shrink-0 text-[10px]"
-        />
-        {showTime ? (
-          <>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm leading-tight">{name}</p>
-              <p className="truncate text-xs text-muted-foreground">
-                {formatReactionTimestamp(item.date)}
-              </p>
-            </div>
-            <span className="w-7 shrink-0 text-center text-xl leading-none">{emoji}</span>
-          </>
-        ) : (
-          <div className="relative min-w-0 flex-1 overflow-hidden" style={{ height: ROW_H }}>
-            <div
-              className={cn(
-                'flex flex-col transition-transform duration-200 ease-out motion-reduce:transition-none',
-                'group-hover/reactor:-translate-y-1/2 group-focus-within/reactor:-translate-y-1/2',
-              )}
-              style={{ height: ROW_H * 2 }}
-            >
-              <div className="flex items-center gap-2" style={{ height: ROW_H }}>
-                <span className="min-w-0 flex-1 truncate text-sm leading-tight">{name}</span>
-                <span className="w-7 shrink-0 text-center text-xl leading-none">{emoji}</span>
-              </div>
-              <div
-                className="flex items-center truncate text-xs text-muted-foreground"
-                style={{ height: ROW_H }}
-              >
-                {formatReactionTimestamp(item.date)}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
+      {clickable && peerId ? (
+        <button
+          type="button"
+          onClick={() => onSelectPeer?.(peerId)}
+          className={cn(
+            'flex w-full cursor-pointer items-center gap-3 rounded-lg border-0 bg-transparent px-2 text-left transition-colors',
+            'hover:bg-accent/90 group-focus-within/reactor:bg-accent/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+          )}
+          style={{ height: showTime ? 52 : ROW_H }}
+        >
+          {content}
+        </button>
+      ) : (
+        <div
+          className={cn(
+            'flex items-center gap-3 rounded-lg px-2 transition-colors',
+            'hover:bg-accent/90 group-focus-within/reactor:bg-accent/90',
+          )}
+          style={{ height: showTime ? 52 : ROW_H }}
+        >
+          {content}
+        </div>
+      )}
     </li>
   );
 });
@@ -114,6 +139,7 @@ export interface MessageReactionReactorsListProps {
   attachSide?: 'left' | 'right';
   /** Dialog rows show the reaction time. The menu keeps the hover reveal. */
   showTime?: boolean;
+  onSelectPeer?: (peerId: string) => void;
   className?: string;
 }
 
@@ -128,6 +154,7 @@ export default function MessageReactionReactorsList({
   loading,
   attachSide = 'right',
   showTime = false,
+  onSelectPeer,
   className,
 }: MessageReactionReactorsListProps) {
   return (
@@ -151,6 +178,7 @@ export default function MessageReactionReactorsList({
                 key={`${peerIdFromTypePeer(item.peerId) ?? 'anon'}-${item.date}-${index}`}
                 item={item}
                 showTime={showTime}
+                onSelectPeer={onSelectPeer}
               />
             ))}
           </ul>

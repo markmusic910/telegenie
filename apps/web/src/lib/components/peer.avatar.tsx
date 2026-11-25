@@ -24,24 +24,37 @@ export type PeerAvatarPhoto = {
 };
 
 type PeerAvatarProps = {
-  peerId: string;
+  peerId?: string | null;
   display: PeerDisplay;
   photo?: PeerAvatarPhoto | null;
+  isBig?: boolean;
   className?: string;
 };
 
-export default function PeerAvatar({ peerId, display, photo, className }: PeerAvatarProps) {
+export default function PeerAvatar({
+  peerId,
+  display,
+  photo,
+  isBig,
+  className,
+}: PeerAvatarProps) {
+  const safePeerId = peerId ?? '';
   const isDeleted = Boolean(display.isDeleted);
   const avatarColor = isDeleted
     ? 'bg-gradient-to-b from-[#ff885e] to-[#ff516a] text-white'
-    : AVATAR_COLORS[peerColorIndex(peerId)];
+    : AVATAR_COLORS[peerColorIndex(safePeerId)];
   const isSavedMessages = display.isSavedMessages;
   const strippedThumb = !isSavedMessages && !isDeleted ? photo?.strippedThumb : undefined;
   const photoId = photo?.photoId;
   const dcId = photo?.dcId;
   const avatarUrl =
-    !isSavedMessages && !isDeleted && photoId && dcId != null && Number.isFinite(dcId)
-      ? buildPeerAvatarUrl({ peerId, photoId, dcId })
+    !isSavedMessages &&
+    !isDeleted &&
+    safePeerId &&
+    photoId &&
+    dcId != null &&
+    Number.isFinite(dcId)
+      ? buildPeerAvatarUrl({ peerId: safePeerId, photoId, dcId, isBig })
       : undefined;
 
   return (

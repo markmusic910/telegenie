@@ -5,9 +5,11 @@ import PeerAvatar from './peer.avatar';
 // @ts-ignore
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
+const buildPeerAvatarUrlMock = jest.fn<string, [unknown]>(() => 'https://example.com/avatar.jpg');
+
 jest.mock('@telegenie/sdk', () => ({
   peerColorIndex: () => 0,
-  buildPeerAvatarUrl: () => 'https://example.com/avatar.jpg',
+  buildPeerAvatarUrl: (params: unknown) => buildPeerAvatarUrlMock(params),
 }));
 
 describe('PeerAvatar', () => {
@@ -87,5 +89,31 @@ describe('PeerAvatar', () => {
     const svg = container.querySelector('svg');
     expect(svg).not.toBeNull();
     expect(svg?.classList.contains('lucide-bookmark')).toBe(true);
+  });
+
+  it('forwards isBig to buildPeerAvatarUrl for profile hero photos', () => {
+    buildPeerAvatarUrlMock.mockClear();
+    act(() => {
+      root?.render(
+        <PeerAvatar
+          peerId="208589966"
+          display={{
+            name: 'Poolitzer X',
+            initials: 'PX',
+            isVerified: false,
+            isSavedMessages: false,
+          }}
+          photo={{ photoId: '99', dcId: 2 }}
+          isBig
+        />,
+      );
+    });
+
+    expect(buildPeerAvatarUrlMock).toHaveBeenCalledWith({
+      peerId: '208589966',
+      photoId: '99',
+      dcId: 2,
+      isBig: true,
+    });
   });
 });

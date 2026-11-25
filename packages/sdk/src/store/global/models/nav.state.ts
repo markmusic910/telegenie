@@ -28,4 +28,8 @@ export interface NavState {
   readonly sortedFolderIds: readonly string[];
   /** Whether Telegram folder tags are shown on chats (Premium feature). */
   readonly folderTagsEnabled: boolean;
+  /** Session-only stack of open User Profile peer IDs in the middle column. */
+  readonly profilePeerIds: readonly string[];
+  /** Top-most active User Profile peer ID, or `undefined` when no profile overlay is open. */
+  readonly activeProfilePeerId: string | undefined;
 }

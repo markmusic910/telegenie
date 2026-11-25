@@ -161,11 +161,23 @@ export function createTelegramWorkerHandlers(
     'user.getUsersByIds': async (ids) => {
       return tg.getUserService().getUsersByIds(ids);
     },
-    'user.getFullUsers': async (options) => {
-      return tg.getUserService().getFullUsers(options);
+    'user.getFullUsers': async (options, fetchOptions) => {
+      return tg.getUserService().getFullUsers(options, fetchOptions);
     },
-    'user.getFullUsersByIds': async (ids) => {
-      return tg.getUserService().getFullUsersByIds(ids);
+    'user.getFullUsersByIds': async (ids, fetchOptions) => {
+      return tg.getUserService().getFullUsersByIds(ids, fetchOptions);
+    },
+    'user.addContact': async (input) => {
+      return tg.getUserService().addContact(input);
+    },
+    'user.deleteContact': async (input) => {
+      return tg.getUserService().deleteContact(input);
+    },
+    'user.setBlocked': async (input) => {
+      return tg.getUserService().setBlocked(input);
+    },
+    'user.setPeerMuted': async (input) => {
+      return tg.getUserService().setPeerMuted(input);
     },
     'user.resolveUsername': async (username) => {
       return tg.getUserService().resolveUsername(username);

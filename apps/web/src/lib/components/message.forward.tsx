@@ -1,10 +1,16 @@
 'use client';
 
 import PeerAvatar from '@/lib/components/peer.avatar';
-import { useDialogPeer } from '@/lib/contexts/sdk.context';
+import { useDialogPeer, useSDK } from '@/lib/contexts/sdk.context';
 import { cn } from '@/lib/utils';
 import type { Message } from '@telegenie/sdk';
-import { initialsFromName, peerActionName, peerColorIndex, peerProfileDisplay } from '@telegenie/sdk';
+import {
+  Dialog,
+  initialsFromName,
+  peerActionName,
+  peerColorIndex,
+  peerProfileDisplay,
+} from '@telegenie/sdk';
 import { observer } from 'mobx-react-lite';
 
 const FORWARD_NAME_COLORS = [
@@ -32,6 +38,7 @@ const MessageForward = observer(function MessageForward({
   plain = false,
   className,
 }: MessageForwardProps) {
+  const sdk = useSDK();
   const peerId = message.forwardSenderPeerId;
   const peer = useDialogPeer(peerId);
   const fwd = message.fwdFrom;
@@ -59,26 +66,59 @@ const MessageForward = observer(function MessageForward({
         }
       : undefined);
   const colorIndex = peerId ? peerColorIndex(peerId) : 0;
+  const canOpenUserProfile = Boolean(peerId && Dialog.peerKindFromId(peerId) === 'user' && !profile?.isDeleted);
 
   return (
     <div className={cn('mb-1 flex min-w-0 items-center gap-1 text-xs leading-4', className)}>
       <span className={cn('shrink-0 whitespace-nowrap', labelClass)}>Forwarded from:</span>
-      {peerId && display ? (
-        <PeerAvatar
-          peerId={peerId}
-          display={display}
-          photo={peer?.photo}
-          className="size-4 text-[8px]"
-        />
-      ) : null}
-      <span
-        className={cn(
-          'min-w-0 truncate font-medium',
-          onColoredBubble ? 'text-primary-foreground' : FORWARD_NAME_COLORS[colorIndex],
-        )}
-      >
-        {name}
-      </span>
+      {canOpenUserProfile && peerId ? (
+        <button
+          type="button"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            sdk.user.openProfile(peerId);
+          }}
+          className="inline-flex min-w-0 cursor-pointer items-center gap-1 border-0 bg-transparent p-0 text-left hover:underline focus-visible:outline-none focus-visible:underline"
+        >
+          {display ? (
+            <PeerAvatar
+              peerId={peerId}
+              display={display}
+              photo={peer?.photo}
+              className="size-4 text-[8px]"
+            />
+          ) : null}
+          <span
+            className={cn(
+              'min-w-0 truncate font-medium',
+              onColoredBubble ? 'text-primary-foreground' : FORWARD_NAME_COLORS[colorIndex],
+            )}
+          >
+            {name}
+          </span>
+        </button>
+      ) : (
+        <>
+          {peerId && display ? (
+            <PeerAvatar
+              peerId={peerId}
+              display={display}
+              photo={peer?.photo}
+              className="size-4 text-[8px]"
+            />
+          ) : null}
+          <span
+            className={cn(
+              'min-w-0 truncate font-medium',
+              onColoredBubble ? 'text-primary-foreground' : FORWARD_NAME_COLORS[colorIndex],
+            )}
+          >
+            {name}
+          </span>
+        </>
+      )}
     </div>
   );
 });

@@ -392,3 +392,163 @@ describe('UserService logging', () => {
     info.mockRestore();
   });
 });
+
+describe('UserService profile mutations & forceRefresh', () => {
+  it('bypasses LocalDb cache when getFullUsers is called with forceRefresh', async () => {
+    const localDb = new LocalDb({
+      accountSlot: `us-full-force-${Date.now()}`,
+      flushDelayMs: 10_000,
+    });
+    await localDb.open();
+    await localDb.putUserFull({
+      id: '42',
+      about: 'stale bio',
+      settings: {} as never,
+      notifySettings: {} as never,
+      commonChatsCount: 0,
+    } as UserFull);
+
+    const client: FakeClient = {
+      invoke: jest.fn().mockResolvedValue(
+        new Api.users.UserFull({
+          fullUser: new Api.UserFull({
+            id: bigInt(42),
+            about: 'fresh bio',
+            settings: new Api.PeerSettings({} as never),
+            notifySettings: new Api.PeerNotifySettings({} as never),
+          } as never),
+          chats: [],
+          users: [user(42, 'Fresh')],
+        }),
+      ),
+    };
+
+    try {
+      const cachedRes = await createService(client, { localDb }).getFullUsers([
+        { id: '42', accessHash: '2' },
+      ]);
+      expect(cachedRes.fullUsers['42']?.about).toBe('stale bio');
+      expect(client.invoke).not.toHaveBeenCalled();
+
+      const freshRes = await createService(client, { localDb }).getFullUsers(
+        [{ id: '42', accessHash: '2' }],
+        { forceRefresh: true },
+      );
+      expect(freshRes.fullUsers['42']?.about).toBe('fresh bio');
+      expect(client.invoke).toHaveBeenCalledTimes(1);
+    } finally {
+      await localDb.deleteDatabase();
+    }
+  });
+
+  it('adds and deletes a contact, persisting returned users and invalidating userFull', async () => {
+    const addedUser = new Api.User({
+      id: bigInt(42),
+      accessHash: bigInt(2),
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      contact: true,
+    } as never);
+    const removedUser = new Api.User({
+      id: bigInt(42),
+      accessHash: bigInt(2),
+      firstName: 'Ada',
+      contact: false,
+    } as never);
+
+    const client: FakeClient = {
+      invoke: jest
+        .fn()
+        .mockResolvedValueOnce(
+          new Api.Updates({
+            updates: [],
+            users: [addedUser],
+            chats: [],
+            date: 1,
+            seq: 1,
+          }),
+        )
+        .mockResolvedValueOnce(
+          new Api.Updates({
+            updates: [],
+            users: [removedUser],
+            chats: [],
+            date: 2,
+            seq: 2,
+          }),
+        ),
+    };
+    const localDb = {
+      putUsers: jest.fn().mockResolvedValue(undefined),
+      putChats: jest.fn().mockResolvedValue(undefined),
+      putChannels: jest.fn().mockResolvedValue(undefined),
+      invalidateUserFull: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const service = createService(client, { localDb: localDb as never });
+    const process = jest.fn().mockResolvedValue(undefined);
+    service.updateManager = { process } as never;
+    const addRes = await service.addContact({
+      id: '42',
+      accessHash: '2',
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      phone: '+123456',
+      addPhonePrivacyException: true,
+    });
+    expect(client.invoke.mock.calls[0][0]).toBeInstanceOf(Api.contacts.AddContact);
+    expect(addRes['42']).toMatchObject({ firstName: 'Ada', lastName: 'Lovelace', contact: true });
+    expect(localDb.putUsers).toHaveBeenCalledTimes(1);
+    expect(localDb.invalidateUserFull).toHaveBeenCalledWith('42');
+
+    const delRes = await service.deleteContact({ id: '42', accessHash: '2' });
+    expect(client.invoke.mock.calls[1][0]).toBeInstanceOf(Api.contacts.DeleteContacts);
+    expect(delRes['42']).toMatchObject({ contact: false });
+    expect(localDb.invalidateUserFull).toHaveBeenCalledTimes(2);
+    expect(process).toHaveBeenCalledTimes(2);
+    expect(process).toHaveBeenCalledWith(expect.anything(), 'rpc');
+  });
+
+  it('blocks/unblocks a user and updates notify settings with storeUpdate callbacks', async () => {
+    const client: FakeClient = {
+      invoke: jest.fn().mockResolvedValue(true),
+    };
+    const onStoreUpdate = jest.fn();
+    const localDb = {
+      getUserFull: jest.fn().mockResolvedValue({
+        id: '42',
+        blocked: false,
+        about: 'hi',
+        notifySettings: {},
+      }),
+      putUserFull: jest.fn().mockResolvedValue(undefined),
+      invalidateUserFull: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const service = new UserService({
+      transportService: { client, debug: false } as unknown as TransportService,
+      localDb: localDb as never,
+      onStoreUpdate,
+    });
+
+    await service.setBlocked({ id: '42', accessHash: '2', blocked: true });
+    expect(client.invoke.mock.calls[0][0]).toBeInstanceOf(Api.contacts.Block);
+    expect(localDb.putUserFull).toHaveBeenCalledWith(
+      expect.objectContaining({ id: '42', blocked: true }),
+    );
+    expect(onStoreUpdate).toHaveBeenCalledWith({
+      type: 'peerBlocked',
+      peerId: '42',
+      blocked: true,
+    });
+
+    const settings = await service.setPeerMuted({ peerId: '42', accessHash: '2', muted: true });
+    expect(client.invoke.mock.calls[1][0]).toBeInstanceOf(Api.account.UpdateNotifySettings);
+    expect(settings.muteUntil).toBe(2_147_483_647);
+    expect(onStoreUpdate).toHaveBeenCalledWith({
+      type: 'notifySettings',
+      peerId: '42',
+      notifySettings: expect.objectContaining({ muteUntil: 2_147_483_647 }),
+    });
+  });
+});

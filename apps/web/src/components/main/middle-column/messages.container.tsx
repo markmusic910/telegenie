@@ -17,6 +17,7 @@ import MessageSelectToolbar from '@/components/main/middle-column/message-select
 import MessageList from '@/components/main/middle-column/message.list';
 import PinnedMessageBar from '@/components/main/middle-column/pinned-message.bar';
 import PinnedMessageList from '@/components/main/middle-column/pinned-message.list';
+import UserProfileView from '@/components/main/middle-column/user-profile/user-profile.view';
 import PeerAvatar from '@/lib/components/peer.avatar';
 import { Button } from '@/lib/components/ui/button';
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from '@/lib/components/ui/menu';
@@ -42,6 +43,7 @@ const MessagesContainer = observer(({ onToggleConfig, onOpenGenie }: MessagesCon
   const sdk = useSDK();
   const globalStore = useStore('global');
   const selectedDialogId = globalStore.nav.selectedDialogId;
+  const activeProfilePeerId = globalStore.nav.activeProfilePeerId;
   const dialog = useStoreEntities('dialog', selectedDialogId);
   const peer = useDialogPeer(dialog?.peerId ?? selectedDialogId);
   const peerId = dialog?.peerId ?? selectedDialogId;
@@ -127,57 +129,82 @@ const MessagesContainer = observer(({ onToggleConfig, onOpenGenie }: MessagesCon
   }
 
   const isOnline = subtitle === 'online';
+  const canOpenUserProfile =
+    peerKind === 'user' &&
+    Boolean(peerId) &&
+    !user?.self &&
+    !display?.isSavedMessages &&
+    !user?.deleted &&
+    !display?.isDeleted;
+  const canClickHeader =
+    Boolean(selectedDialogId) &&
+    (canOpenUserProfile || peerKind === 'chat' || peerKind === 'channel');
+
+  const handleHeaderClick = () => {
+    if (!selectedDialogId || !peerId) return;
+    if (canOpenUserProfile) {
+      sdk.user.openProfile(peerId);
+      return;
+    }
+    if (peerKind === 'chat' || peerKind === 'channel') {
+      onToggleConfig();
+    }
+  };
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden">
-      <div className="flex h-14 shrink-0 items-center border-b border-border px-4 gap-3">
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={onToggleConfig}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              onToggleConfig();
-            }
-          }}
-          className={cn(
-            'flex min-w-0 flex-1 items-center gap-3 select-none rounded-lg p-1.5 -ml-1.5 transition-colors',
-            selectedDialogId
-              ? 'cursor-pointer hover:bg-accent/50 outline-none focus-visible:ring-1 focus-visible:ring-ring'
-              : 'cursor-default',
-          )}
-          title={selectedDialogId ? 'View dialog info' : undefined}
-        >
-          {display && peerId && (
-            <PeerAvatar
-              peerId={peerId}
-              display={display}
-              photo={peer?.photo}
-              className="size-9 text-xs shrink-0"
-            />
-          )}
-          <div className="flex min-w-0 flex-1 flex-col justify-center">
-            <span className="flex min-w-0 items-baseline gap-1.5 text-sm font-semibold text-foreground leading-tight">
-              <span className="truncate">{display?.name || 'Select a conversation'}</span>
-              {process.env.NODE_ENV === 'development' && peerId ? (
-                <span className="shrink-0 font-mono text-[11px] font-normal text-muted-foreground">
-                  {peerId}
-                </span>
-              ) : null}
-            </span>
-            {subtitle && (
-              <span
-                className={cn(
-                  'truncate text-xs leading-normal mt-0.5',
-                  isOnline ? 'text-primary font-medium' : 'text-muted-foreground',
-                )}
-              >
-                {subtitle}
-              </span>
+      <div
+        className="relative flex h-full flex-col overflow-hidden"
+        inert={Boolean(activeProfilePeerId) || undefined}
+      >
+        <div className="flex h-14 shrink-0 items-center border-b border-border px-4 gap-3">
+          <button
+            type="button"
+            disabled={!canClickHeader}
+            onClick={handleHeaderClick}
+            className={cn(
+              'flex min-w-0 flex-1 items-center gap-3 select-none rounded-lg border-0 bg-transparent p-1.5 -ml-1.5 text-left transition-colors',
+              canClickHeader
+                ? 'cursor-pointer hover:bg-accent/50 outline-none focus-visible:ring-1 focus-visible:ring-ring'
+                : 'cursor-default disabled:opacity-100',
             )}
-          </div>
-        </div>
+            title={
+              canOpenUserProfile
+                ? 'View user profile'
+                : canClickHeader
+                  ? 'View dialog info'
+                  : undefined
+            }
+          >
+            {display && peerId && (
+              <PeerAvatar
+                peerId={peerId}
+                display={display}
+                photo={peer?.photo}
+                className="size-9 text-xs shrink-0"
+              />
+            )}
+            <div className="flex min-w-0 flex-1 flex-col justify-center">
+              <span className="flex min-w-0 items-baseline gap-1.5 text-sm font-semibold text-foreground leading-tight">
+                <span className="truncate">{display?.name || 'Select a conversation'}</span>
+                {process.env.NODE_ENV === 'development' && peerId ? (
+                  <span className="shrink-0 font-mono text-[11px] font-normal text-muted-foreground">
+                    {peerId}
+                  </span>
+                ) : null}
+              </span>
+              {subtitle && (
+                <span
+                  className={cn(
+                    'truncate text-xs leading-normal mt-0.5',
+                    isOnline ? 'text-primary font-medium' : 'text-muted-foreground',
+                  )}
+                >
+                  {subtitle}
+                </span>
+              )}
+            </div>
+          </button>
 
         {selectedDialogId ? (
           <Menu>
@@ -302,6 +329,23 @@ const MessagesContainer = observer(({ onToggleConfig, onOpenGenie }: MessagesCon
           </div>
         </>
       )}
+      </div>
+
+      {/* User Profile View (Slides over the entire middle column, matching official desktop) */}
+      <AnimatePresence>
+        {activeProfilePeerId && (
+          <motion.div
+            key={`user-profile-${activeProfilePeerId}`}
+            initial={{ x: '100%', opacity: 0.85 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: '100%', opacity: 0.85 }}
+            transition={{ type: 'spring', damping: 28, stiffness: 280 }}
+            className="absolute inset-0 z-40 flex flex-col bg-background"
+          >
+            <UserProfileView peerId={activeProfilePeerId} />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 });

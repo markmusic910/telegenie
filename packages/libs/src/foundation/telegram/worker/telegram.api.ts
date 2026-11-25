@@ -33,10 +33,12 @@ import type {
   MessageEmpty,
   MissingInvitee,
   TypeEncryptedChat,
+  TypePeerNotifySettings,
   TypeReaction,
   User,
   UserFull,
 } from '../types/api-types';
+import type { AddContactInput } from '../services/user.service';
 import type { Message, MessageReactionsList, MessageService } from '../types/message';
 import type { TelegramCredentials } from '../utils';
 import type { DialogOrderPayload, StoreSyncPayload } from './store-sync';
@@ -299,8 +301,30 @@ export type TelegramWorkerApi = {
   };
   'user.getUsers': { args: [options: PeerIdAccessHash[]]; result: Record<string, User> };
   'user.getUsersByIds': { args: [ids: string[]]; result: Record<string, User> };
-  'user.getFullUsers': { args: [options: PeerIdAccessHash[]]; result: FullUserBundle };
-  'user.getFullUsersByIds': { args: [ids: string[]]; result: FullUserBundle };
+  'user.getFullUsers': {
+    args: [options: PeerIdAccessHash[], fetchOptions?: { forceRefresh?: boolean }];
+    result: FullUserBundle;
+  };
+  'user.getFullUsersByIds': {
+    args: [ids: string[], fetchOptions?: { forceRefresh?: boolean }];
+    result: FullUserBundle;
+  };
+  'user.addContact': {
+    args: [input: AddContactInput];
+    result: Record<string, User>;
+  };
+  'user.deleteContact': {
+    args: [input: PeerIdAccessHash];
+    result: Record<string, User>;
+  };
+  'user.setBlocked': {
+    args: [input: { id: string; accessHash?: string; blocked: boolean }];
+    result: void;
+  };
+  'user.setPeerMuted': {
+    args: [input: { peerId: string; accessHash?: string; muted: boolean }];
+    result: TypePeerNotifySettings;
+  };
   'user.resolveUsername': {
     args: [username: string];
     result:

@@ -1,15 +1,30 @@
 import { Controller, Method, RequestLog } from '@telegenie/decorators';
+import { getEntityTypeById } from '@telegenie/libs/foundation/telegram/helpers';
+import type { TypePeerNotifySettings } from '@telegenie/libs/foundation/telegram/types/api-types';
 import type { TelegramWorkerClient } from '@telegenie/libs/foundation/telegram/worker';
+import { toJS } from 'mobx';
 import type { Channel } from '@telegenie/sdk/store/entity/models/channel.model';
+import { Dialog } from '@telegenie/sdk/store/entity/models/dialog.model';
 import { UserFull } from '@telegenie/sdk/store/entity/models/user-full.model';
 import { User } from '@telegenie/sdk/store/entity/models/user.model';
+import type GlobalStore from '@telegenie/sdk/store/global/global.store';
 import type StoreManager from '@telegenie/sdk/store/store.manager';
+import type { DialogEntity, UserEntity, UserFullEntity } from '@telegenie/sdk/store/types';
 import { ConversionService } from '../common/services/convert.service';
+
+export type AddUserContactInput = {
+  userId: string;
+  firstName: string;
+  lastName?: string;
+  phone?: string;
+  addPhonePrivacyException?: boolean;
+};
 
 type UsernamePeer = Pick<User | Channel, 'id' | 'username' | 'usernames'>;
 
 type UserControllerOptions = {
   sm: StoreManager;
+  globalStore?: GlobalStore;
   debug?: boolean;
   worker: TelegramWorkerClient;
 };
@@ -18,16 +33,18 @@ type UserControllerOptions = {
 export class UserController {
   worker: TelegramWorkerClient;
   sm: StoreManager;
+  globalStore: GlobalStore | undefined;
   converter: ConversionService;
   private topInlineBotIdsCache?: string[];
   private topInlineBotsInFlight?: Promise<string[]>;
 
-  constructor({ sm, debug, worker }: UserControllerOptions) {
+  constructor({ sm, globalStore, debug, worker }: UserControllerOptions) {
     this.converter = new ConversionService({
       debug: debug ?? false,
     });
     this.worker = worker;
     this.sm = sm;
+    this.globalStore = globalStore;
   }
 
   @RequestLog()
@@ -60,9 +77,11 @@ export class UserController {
       id: string;
       accessHash?: string;
     }[],
+    fetchOptions?: { forceRefresh?: boolean },
   ): Promise<UserFull[]> {
     const { fullUsers, chats, channels, users } = await this.worker.call('user.getFullUsers', [
       options,
+      fetchOptions,
     ]);
 
     if (Object.keys(users).length > 0) {
@@ -86,9 +105,13 @@ export class UserController {
 
   @RequestLog()
   @Method()
-  async getFullUsersByIds(ids: string[]): Promise<UserFull[]> {
+  async getFullUsersByIds(
+    ids: string[],
+    fetchOptions?: { forceRefresh?: boolean },
+  ): Promise<UserFull[]> {
     const { fullUsers, chats, channels, users } = await this.worker.call('user.getFullUsersByIds', [
       ids,
+      fetchOptions,
     ]);
 
     if (Object.keys(users).length > 0) {
@@ -210,6 +233,188 @@ export class UserController {
         );
     }
     return userIds;
+  }
+
+  /**
+   * Push a user peer onto the middle-column profile stack and trigger background `UserFull` sync.
+   * Skips non-user IDs, Saved Messages (`self`), and known deleted accounts.
+   */
+  @RequestLog()
+  @Method()
+  openProfile(userId: string): boolean {
+    const trimmed = userId.trim();
+    if (!trimmed) return false;
+    try {
+      if (getEntityTypeById(trimmed) !== 'user') return false;
+    } catch {
+      return false;
+    }
+
+    const selfId = this.globalStore?.auth.currentUser?.id;
+    if (selfId && String(selfId) === trimmed) {
+      return false;
+    }
+
+    const existingUser = this.sm.has('user')
+      ? (this.sm.get('user').getAllData().get(trimmed) as User | undefined)
+      : undefined;
+    if (existingUser?.self || existingUser?.deleted) {
+      return false;
+    }
+
+    this.globalStore?.nav.pushProfilePeerId(trimmed);
+
+    if (!existingUser) {
+      void this.getUsersByIds([trimmed]).catch(() => undefined);
+    }
+    void this.getFullUsers([{ id: trimmed, accessHash: existingUser?.accessHash }], {
+      forceRefresh: true,
+    }).catch(() => undefined);
+
+    return true;
+  }
+
+  /** Pop the top-most User Profile from the middle-column overlay stack. */
+  @RequestLog()
+  @Method()
+  popProfile(): string | undefined {
+    return this.globalStore?.nav.popProfilePeerId();
+  }
+
+  /** Clear the entire User Profile stack (e.g. when opening a chat). */
+  @RequestLog()
+  @Method()
+  closeProfile(): void {
+    this.globalStore?.nav.clearProfilePeerIds();
+  }
+
+  @RequestLog()
+  @Method()
+  async addContact(input: AddUserContactInput): Promise<User | undefined> {
+    const existing = this.sm.has('user')
+      ? (this.sm.get('user').getAllData().get(input.userId) as User | undefined)
+      : undefined;
+    const usersRecord = await this.worker.call('user.addContact', [
+      {
+        id: input.userId,
+        accessHash: existing?.accessHash,
+        firstName: input.firstName,
+        lastName: input.lastName ?? '',
+        phone: input.phone ?? existing?.phone ?? '',
+        addPhonePrivacyException: input.addPhonePrivacyException,
+      },
+    ]);
+    const converted = this.converter.convertUsers(Object.values(usersRecord));
+    if (converted.length > 0 && this.sm.has('user')) {
+      this.sm.get('user').update(converted);
+      const match = converted.find((entry) => entry.id === input.userId) ?? converted[0];
+      return match ? new User(match) : undefined;
+    }
+    if (existing && this.sm.has('user')) {
+      const patched: UserEntity = {
+        ...(toJS(existing) as UserEntity),
+        id: input.userId,
+        contact: true,
+        firstName: input.firstName,
+        lastName: input.lastName ?? '',
+      };
+      this.sm.get('user').update([patched]);
+      return new User(patched);
+    }
+    return undefined;
+  }
+
+  @RequestLog()
+  @Method()
+  async deleteContact(userId: string): Promise<void> {
+    const existing = this.sm.has('user')
+      ? (this.sm.get('user').getAllData().get(userId) as User | undefined)
+      : undefined;
+    const usersRecord = await this.worker.call('user.deleteContact', [
+      {
+        id: userId,
+        accessHash: existing?.accessHash,
+      },
+    ]);
+    const converted = this.converter.convertUsers(Object.values(usersRecord));
+    if (converted.length > 0 && this.sm.has('user')) {
+      this.sm.get('user').update(converted);
+      return;
+    }
+    if (existing && this.sm.has('user')) {
+      const patched: UserEntity = {
+        ...(toJS(existing) as UserEntity),
+        id: userId,
+        contact: false,
+        mutualContact: false,
+      };
+      this.sm.get('user').update([patched]);
+    }
+  }
+
+  @RequestLog()
+  @Method()
+  async setBlocked(userId: string, blocked: boolean): Promise<void> {
+    const existing = this.sm.has('user')
+      ? (this.sm.get('user').getAllData().get(userId) as User | undefined)
+      : undefined;
+    await this.worker.call('user.setBlocked', [
+      {
+        id: userId,
+        accessHash: existing?.accessHash,
+        blocked,
+      },
+    ]);
+    if (this.sm.has('userFull')) {
+      const full = this.sm.get('userFull').getAllData().get(userId) as UserFull | undefined;
+      if (full) {
+        const merged: UserFullEntity = {
+          ...(toJS(full) as UserFullEntity),
+          id: userId,
+          blocked,
+        };
+        this.sm.get('userFull').update([new UserFull(merged)]);
+      }
+    }
+  }
+
+  @RequestLog()
+  @Method()
+  async setMuted(peerId: string, muted: boolean): Promise<TypePeerNotifySettings> {
+    const existingUser = this.sm.has('user')
+      ? (this.sm.get('user').getAllData().get(peerId) as User | undefined)
+      : undefined;
+    const notifySettings = await this.worker.call('user.setPeerMuted', [
+      {
+        peerId,
+        accessHash: existingUser?.accessHash,
+        muted,
+      },
+    ]);
+    if (this.sm.has('dialog')) {
+      const existingDialog = this.sm.get('dialog').getAllData().get(peerId) as Dialog | undefined;
+      if (existingDialog) {
+        const mergedDialog: DialogEntity = {
+          ...(toJS(existingDialog) as DialogEntity),
+          id: peerId,
+          peerId,
+          notifySettings,
+        };
+        this.sm.get('dialog').update([new Dialog(mergedDialog)]);
+      }
+    }
+    if (this.sm.has('userFull')) {
+      const existingFull = this.sm.get('userFull').getAllData().get(peerId) as UserFull | undefined;
+      if (existingFull) {
+        const mergedFull: UserFullEntity = {
+          ...(toJS(existingFull) as UserFullEntity),
+          id: peerId,
+          notifySettings,
+        };
+        this.sm.get('userFull').update([new UserFull(mergedFull)]);
+      }
+    }
+    return notifySettings;
   }
 
   private findPeerIdByUsername(username: string): string | undefined {

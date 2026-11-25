@@ -32,7 +32,7 @@ import {
   getDocumentSourceDimensions,
 } from '@/lib/utils/media-dimensions';
 import type { Message, MessageAlbum } from '@telegenie/sdk';
-import { fallbackPeerDisplay, initialsFromName, peerColorIndex } from '@telegenie/sdk';
+import { Dialog, fallbackPeerDisplay, initialsFromName, peerColorIndex } from '@telegenie/sdk';
 import {
   BarChart2,
   CreditCard,
@@ -182,6 +182,17 @@ const MessageItem = observer(function MessageItem({
   const senderTitle = isDeletedSender
     ? 'Deleted Account'
     : (senderPeer?.display?.name ?? senderName);
+  const canOpenSenderProfile =
+    !isSelectMode &&
+    !isDeletedSender &&
+    Boolean(senderPeerId && Dialog.peerKindFromId(senderPeerId) === 'user');
+
+  const handleOpenSenderProfile = (event: React.MouseEvent) => {
+    if (!canOpenSenderProfile || !senderPeerId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    sdk.user.openProfile(senderPeerId);
+  };
 
   const outgoingStatus = message.outgoingStatus(readOutboxMaxId);
   const senderColor = isDeletedSender
@@ -312,12 +323,29 @@ const MessageItem = observer(function MessageItem({
       {!isOwn && showAvatar && (
         <div className="flex size-8 shrink-0 flex-col justify-end self-end mb-0.5">
           {isLastInGroup && senderPeerId && resolvedSenderDisplay ? (
-            <PeerAvatar
-              peerId={senderPeerId}
-              display={resolvedSenderDisplay}
-              photo={senderPhoto}
-              className="size-8 text-xs"
-            />
+            canOpenSenderProfile ? (
+              <button
+                type="button"
+                aria-label={`View ${resolvedSenderDisplay.name} profile`}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={handleOpenSenderProfile}
+                className="flex size-8 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 transition-opacity hover:opacity-85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <PeerAvatar
+                  peerId={senderPeerId}
+                  display={resolvedSenderDisplay}
+                  photo={senderPhoto}
+                  className="size-8 text-xs"
+                />
+              </button>
+            ) : (
+              <PeerAvatar
+                peerId={senderPeerId}
+                display={resolvedSenderDisplay}
+                photo={senderPhoto}
+                className="size-8 text-xs"
+              />
+            )
           ) : (
             <div className="size-8" />
           )}
@@ -360,19 +388,38 @@ const MessageItem = observer(function MessageItem({
       >
         {/* Sender name for first message in group chats */}
         {showSenderName && !isOwn && senderTitle && (
-          <span
-            className={cn(
-              'font-semibold select-none leading-none truncate',
-              isSticker || isRoundVideo || isSingleCustomEmoji
-                ? 'mb-1 text-xs px-1'
-                : isPureMedia
-                  ? 'p-2.5 pb-1 text-xs'
-                  : 'mb-1 text-xs',
-              senderColor,
-            )}
-          >
-            {senderTitle}
-          </span>
+          canOpenSenderProfile ? (
+            <button
+              type="button"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={handleOpenSenderProfile}
+              className={cn(
+                'w-fit max-w-full cursor-pointer border-0 bg-transparent p-0 text-left font-semibold select-none leading-none truncate hover:underline focus-visible:outline-none focus-visible:underline',
+                isSticker || isRoundVideo || isSingleCustomEmoji
+                  ? 'mb-1 text-xs px-1'
+                  : isPureMedia
+                    ? 'p-2.5 pb-1 text-xs'
+                    : 'mb-1 text-xs',
+                senderColor,
+              )}
+            >
+              {senderTitle}
+            </button>
+          ) : (
+            <span
+              className={cn(
+                'font-semibold select-none leading-none truncate',
+                isSticker || isRoundVideo || isSingleCustomEmoji
+                  ? 'mb-1 text-xs px-1'
+                  : isPureMedia
+                    ? 'p-2.5 pb-1 text-xs'
+                    : 'mb-1 text-xs',
+                senderColor,
+              )}
+            >
+              {senderTitle}
+            </span>
+          )
         )}
 
         <MessageForward

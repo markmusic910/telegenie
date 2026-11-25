@@ -354,6 +354,10 @@ const MessageContextMenuEnabled = observer(function MessageContextMenuEnabled({
                   reactions={reactorItems}
                   loading={reactorsLoading}
                   attachSide="left"
+                  onSelectPeer={(reactorPeerId) => {
+                    setOpen(false);
+                    sdk.user.openProfile(reactorPeerId);
+                  }}
                 />
               ) : null}
               <div ref={menuMainRef} className="min-w-56 shrink-0 p-1" data-context-menu-main>
@@ -553,6 +557,10 @@ const MessageContextMenuEnabled = observer(function MessageContextMenuEnabled({
                   reactions={reactorItems}
                   loading={reactorsLoading}
                   attachSide="right"
+                  onSelectPeer={(reactorPeerId) => {
+                    setOpen(false);
+                    sdk.user.openProfile(reactorPeerId);
+                  }}
                 />
               ) : null}
             </ContextMenuPrimitive.Popup>

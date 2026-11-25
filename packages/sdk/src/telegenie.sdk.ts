@@ -216,7 +216,12 @@ export class TeleGenieSDK {
       worker: this.worker,
       globalStore: this.globalStore,
     });
-    this.user = new UserController({ sm: this.store, debug: this.debug, worker: this.worker });
+    this.user = new UserController({
+      sm: this.store,
+      globalStore: this.globalStore,
+      debug: this.debug,
+      worker: this.worker,
+    });
     this.messageDraft = new MessageDraftController({
       worker: this.worker,
       sm: this.store,

@@ -431,6 +431,7 @@ export class MessageLoadController {
   @RequestLog()
   @Method()
   async selectDialog(peerId: string, threadId: string = MAIN_THREAD_ID): Promise<void> {
+    this.globalStore.nav.clearProfilePeerIds();
     const previousPeerId = this.globalStore.nav.selectedDialogId;
     if (previousPeerId && previousPeerId !== peerId) {
       this.flushPendingInboxRead?.(previousPeerId);

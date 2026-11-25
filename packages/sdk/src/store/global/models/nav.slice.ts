@@ -35,6 +35,9 @@ export class NavSlice extends GlobalStoreSlice implements NavState {
   /** Whether Telegram folder tags are shown on chats (Premium feature). */
   folderTagsEnabled: boolean = false;
 
+  /** Session-only stack of open User Profile peer IDs in the middle column. */
+  profilePeerIds: string[] = [];
+
   private readonly globalStore: GlobalStore;
 
   constructor(globalStore: GlobalStore) {
@@ -42,6 +45,31 @@ export class NavSlice extends GlobalStoreSlice implements NavState {
     this.globalStore = globalStore;
     this.observe({ globalStore: false });
   }
+
+  get activeProfilePeerId(): string | undefined {
+    return this.profilePeerIds.length > 0
+      ? this.profilePeerIds[this.profilePeerIds.length - 1]
+      : undefined;
+  }
+
+  pushProfilePeerId = (peerId: string) => {
+    const trimmed = peerId.trim();
+    if (!trimmed) return;
+    if (this.activeProfilePeerId === trimmed) return;
+    this.profilePeerIds = [...this.profilePeerIds, trimmed];
+  };
+
+  popProfilePeerId = (): string | undefined => {
+    if (this.profilePeerIds.length === 0) return undefined;
+    const popped = this.profilePeerIds[this.profilePeerIds.length - 1];
+    this.profilePeerIds = this.profilePeerIds.slice(0, -1);
+    return popped;
+  };
+
+  clearProfilePeerIds = () => {
+    if (this.profilePeerIds.length === 0) return;
+    this.profilePeerIds = [];
+  };
 
   setSelectedDialogId = (dialogId: string | undefined) => {
     if (this.selectedDialogId && this.selectedDialogId !== dialogId) {
@@ -53,6 +81,9 @@ export class NavSlice extends GlobalStoreSlice implements NavState {
           thread.clearSelection();
         }
       }
+      this.clearProfilePeerIds();
+    } else if (!dialogId) {
+      this.clearProfilePeerIds();
     }
     this.selectedDialogId = dialogId;
   };

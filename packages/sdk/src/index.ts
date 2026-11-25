@@ -75,6 +75,7 @@ export type {
   TabToolDefinition,
   TabToolHandler,
 } from './modules/agent/agent.controller';
+export type { AddUserContactInput } from './modules/user/user.controller';
 export type { ToggleSelectionInput } from './modules/message/message-select.controller';
 export type {
   FocusMessageOptions,

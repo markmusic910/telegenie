@@ -6,10 +6,11 @@ import type {
 } from '@telegenie/libs/foundation/telegram/worker';
 import { toJS } from 'mobx';
 import { Dialog } from '../../store/entity/models/dialog.model';
+import { UserFull } from '../../store/entity/models/user-full.model';
 import type GlobalStore from '../../store/global/global.store';
 import { MAIN_THREAD_ID } from '../../store/global/models/thread.state';
 import type StoreManager from '../../store/store.manager';
-import type { DialogEntity, MessageEntity, MessageStore } from '../../store/types';
+import type { DialogEntity, MessageEntity, MessageStore, UserFullEntity } from '../../store/types';
 import { ConversionService } from '../common/services/convert.service';
 import { writeStampedMessages } from '../common/stamp-reply-verification';
 import type { DialogFilterController } from '../dialog-filter/dialog-filter.controller';
@@ -110,6 +111,10 @@ export class UpdatesController {
         return;
       case 'notifySettings':
         this.patchDialog(payload.peerId, { notifySettings: payload.notifySettings });
+        this.patchUserFull(payload.peerId, { notifySettings: payload.notifySettings });
+        return;
+      case 'peerBlocked':
+        this.patchUserFull(payload.peerId, { blocked: payload.blocked });
         return;
       case 'folderPeer':
         this.patchDialog(payload.peerId, { folderId: payload.folderId });
@@ -426,6 +431,18 @@ export class UpdatesController {
       peerId,
     };
     this.sm.get('dialog').update([new Dialog(merged)]);
+  }
+
+  private patchUserFull(peerId: string, patch: Partial<UserFullEntity>): void {
+    if (!peerId || !this.sm.has('userFull')) return;
+    const existing = this.sm.get('userFull').getAllData().get(peerId) as UserFull | undefined;
+    if (!existing) return;
+    const merged: UserFullEntity = {
+      ...(toJS(existing) as UserFullEntity),
+      ...patch,
+      id: peerId,
+    };
+    this.sm.get('userFull').update([new UserFull(merged)]);
   }
 
   private dialogOf(peerId: string): Dialog | undefined {

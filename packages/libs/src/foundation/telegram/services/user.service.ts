@@ -5,12 +5,25 @@ import to from 'await-to-js';
 import { chunk } from 'lodash-es';
 import { buildInputPeer, buildMarkedPeerIdByType, getEntityTypeById } from '../helpers';
 import type { LocalDb } from '../local-db/local-db';
-import type { Channel, Chat, PeerChannel, PeerChat, PeerUser } from '../types/api-types';
+import type {
+  Channel,
+  Chat,
+  PeerChannel,
+  PeerChat,
+  PeerUser,
+  TypePeerNotifySettings,
+} from '../types/api-types';
 import type { User, UserFull } from '../types/users';
-import { convertTypePeer } from './converters/common.converter';
+import type { UpdateManager } from '../update-manager';
+import type { StoreSyncPayload } from '../worker/store-sync';
+import {
+  convertTypePeer,
+  convertTypePeerNotifySettings,
+} from './converters/common.converter';
 import { convertChannel, convertChat } from './converters/chat.converter';
 import { convertUser, convertUserFull } from './converters/user.converter';
 import { persistPeers } from './utils/persist-peers.helper';
+import { resolveInputPeerForRead } from './resolve-input-peer-for-read';
 import type { TransportService } from './transport.service';
 
 export type ResolveUsernameResult = {
@@ -50,10 +63,30 @@ function extractPeersFromChatsAndUsers(
   return { users, chats, channels };
 }
 
+export type AddContactInput = {
+  id: string;
+  accessHash?: string;
+  firstName: string;
+  lastName?: string;
+  phone?: string;
+  addPhonePrivacyException?: boolean;
+};
+
+function extractUsersFromUpdatesResult(result: unknown): User[] {
+  if (result instanceof Api.Updates || result instanceof Api.UpdatesCombined) {
+    return (result.users ?? [])
+      .filter((entry): entry is Api.User => entry instanceof Api.User)
+      .map(convertUser);
+  }
+  return [];
+}
+
 type UserServiceOptions = {
   debug?: boolean;
   transportService: TransportService;
   localDb?: LocalDb;
+  updateManager?: UpdateManager;
+  onStoreUpdate?: (payload: StoreSyncPayload) => void;
 };
 
 /**
@@ -64,10 +97,20 @@ export class UserService {
   private log: (...args: any) => void;
   transportService: TransportService;
   localDb: LocalDb | undefined;
+  updateManager: UpdateManager | undefined;
+  onStoreUpdate: ((payload: StoreSyncPayload) => void) | undefined;
 
-  constructor({ debug, transportService, localDb }: UserServiceOptions) {
+  constructor({
+    debug,
+    transportService,
+    localDb,
+    updateManager,
+    onStoreUpdate,
+  }: UserServiceOptions) {
     this.transportService = transportService;
     this.localDb = localDb;
+    this.updateManager = updateManager;
+    this.onStoreUpdate = onStoreUpdate;
     this.debug = debug ?? false;
     this.log = (...args: any) => {
       if (this.debug) {
@@ -155,6 +198,7 @@ export class UserService {
       id: string;
       accessHash?: string;
     }[],
+    fetchOptions?: { forceRefresh?: boolean },
   ): Promise<{
     fullUsers: Record<string, UserFull>;
     chats: Record<string, Chat>;
@@ -170,12 +214,14 @@ export class UserService {
     for (const opt of options) {
       // users.getFullUser only accepts InputUser. Chat and channel ids are a different full-info RPC.
       if (getEntityTypeById(opt.id) !== 'user') continue;
-      const local = await this.localDb?.getUserFull(opt.id);
-      if (local) {
-        fullUsers[local.id] = local;
-      } else {
-        misses.push(opt);
+      if (!fetchOptions?.forceRefresh) {
+        const local = await this.localDb?.getUserFull(opt.id);
+        if (local) {
+          fullUsers[local.id] = local;
+          continue;
+        }
       }
+      misses.push(opt);
     }
 
     if (misses.length === 0) {
@@ -256,13 +302,156 @@ export class UserService {
    */
   getFullUsersByIds = async (
     ids: string[],
+    fetchOptions?: { forceRefresh?: boolean },
   ): Promise<{
     fullUsers: Record<string, UserFull>;
     chats: Record<string, Chat>;
     channels: Record<string, Channel>;
     users: Record<string, User>;
   }> => {
-    return this.getFullUsers(ids.map((id) => ({ id })));
+    return this.getFullUsers(
+      ids.map((id) => ({ id })),
+      fetchOptions,
+    );
+  };
+
+  /**
+   * Add or update a Telegram contact (`contacts.addContact`), persist returned user entities,
+   * and invalidate cached `userFull` so contact settings refresh.
+   */
+  addContact = async (input: AddContactInput): Promise<Record<string, User>> => {
+    if (!this.client) {
+      throw new Error('Client not initialized');
+    }
+    const peer = input.accessHash
+      ? buildInputPeer(input.id, input.accessHash)
+      : await resolveInputPeerForRead(input.id, this.transportService, this.localDb);
+    const updates = await this.client.invoke(
+      new Api.contacts.AddContact({
+        id: peer,
+        firstName: input.firstName,
+        lastName: input.lastName ?? '',
+        phone: input.phone ?? '',
+        addPhonePrivacyException: Boolean(input.addPhonePrivacyException),
+      }),
+    );
+    if (this.updateManager && updates) {
+      await this.updateManager.process(updates, 'rpc');
+    }
+    const users = extractUsersFromUpdatesResult(updates);
+    const record: Record<string, User> = {};
+    for (const user of users) {
+      record[user.id] = user;
+    }
+    if (users.length > 0) {
+      await persistPeers(this.localDb, { users });
+    }
+    await this.localDb?.invalidateUserFull(input.id);
+    return record;
+  };
+
+  /**
+   * Remove a user from contacts (`contacts.deleteContacts`), persist returned user entities,
+   * and invalidate cached `userFull`.
+   */
+  deleteContact = async (input: {
+    id: string;
+    accessHash?: string;
+  }): Promise<Record<string, User>> => {
+    if (!this.client) {
+      throw new Error('Client not initialized');
+    }
+    const peer = input.accessHash
+      ? buildInputPeer(input.id, input.accessHash)
+      : await resolveInputPeerForRead(input.id, this.transportService, this.localDb);
+    const updates = await this.client.invoke(
+      new Api.contacts.DeleteContacts({
+        id: [peer],
+      }),
+    );
+    if (this.updateManager && updates) {
+      await this.updateManager.process(updates, 'rpc');
+    }
+    const users = extractUsersFromUpdatesResult(updates);
+    const record: Record<string, User> = {};
+    for (const user of users) {
+      record[user.id] = user;
+    }
+    if (users.length > 0) {
+      await persistPeers(this.localDb, { users });
+    }
+    await this.localDb?.invalidateUserFull(input.id);
+    return record;
+  };
+
+  /**
+   * Block or unblock a peer (`contacts.block` / `contacts.unblock`) and sync `LocalDb` + tabs.
+   */
+  setBlocked = async (input: {
+    id: string;
+    accessHash?: string;
+    blocked: boolean;
+  }): Promise<void> => {
+    if (!this.client) {
+      throw new Error('Client not initialized');
+    }
+    const peer = input.accessHash
+      ? buildInputPeer(input.id, input.accessHash)
+      : await resolveInputPeerForRead(input.id, this.transportService, this.localDb);
+    if (input.blocked) {
+      await this.client.invoke(new Api.contacts.Block({ id: peer }));
+    } else {
+      await this.client.invoke(new Api.contacts.Unblock({ id: peer }));
+    }
+    const cached = await this.localDb?.getUserFull(input.id);
+    if (cached && this.localDb) {
+      await this.localDb.putUserFull({ ...cached, blocked: input.blocked });
+    } else {
+      await this.localDb?.invalidateUserFull(input.id);
+    }
+    this.onStoreUpdate?.({
+      type: 'peerBlocked',
+      peerId: input.id,
+      blocked: input.blocked,
+    });
+  };
+
+  /**
+   * Mute (`muteUntil = 2147483647`) or unmute (`muteUntil = 0`) notifications for a peer.
+   */
+  setPeerMuted = async (input: {
+    peerId: string;
+    accessHash?: string;
+    muted: boolean;
+  }): Promise<TypePeerNotifySettings> => {
+    if (!this.client) {
+      throw new Error('Client not initialized');
+    }
+    const peer = input.accessHash
+      ? buildInputPeer(input.peerId, input.accessHash)
+      : await resolveInputPeerForRead(input.peerId, this.transportService, this.localDb);
+    const muteUntil = input.muted ? 2_147_483_647 : 0;
+    await this.client.invoke(
+      new Api.account.UpdateNotifySettings({
+        peer: new Api.InputNotifyPeer({ peer }),
+        settings: new Api.InputPeerNotifySettings({ muteUntil }),
+      }),
+    );
+    const notifySettings = convertTypePeerNotifySettings(
+      new Api.PeerNotifySettings({ muteUntil }),
+    );
+    if (getEntityTypeById(input.peerId) === 'user' && this.localDb) {
+      const cachedFull = await this.localDb.getUserFull(input.peerId);
+      if (cachedFull) {
+        await this.localDb.putUserFull({ ...cachedFull, notifySettings });
+      }
+    }
+    this.onStoreUpdate?.({
+      type: 'notifySettings',
+      peerId: input.peerId,
+      notifySettings,
+    });
+    return notifySettings;
   };
 
   /** Read a user from LocalDb only (no network). */
