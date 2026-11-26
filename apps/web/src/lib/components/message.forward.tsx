@@ -66,19 +66,34 @@ const MessageForward = observer(function MessageForward({
         }
       : undefined);
   const colorIndex = peerId ? peerColorIndex(peerId) : 0;
-  const canOpenUserProfile = Boolean(peerId && Dialog.peerKindFromId(peerId) === 'user' && !profile?.isDeleted);
+  const peerKind = peerId ? Dialog.peerKindFromId(peerId) : undefined;
+  const canOpenProfile = Boolean(
+    peerId &&
+      ((peerKind === 'user' && !profile?.isDeleted) ||
+        peerKind === 'channel' ||
+        peerKind === 'chat'),
+  );
+
+  const handleOpenProfile = () => {
+    if (!peerId) return;
+    if (peerKind === 'user') {
+      sdk.user.openProfile(peerId);
+    } else if (peerKind === 'channel' || peerKind === 'chat') {
+      sdk.dialogInfo.open(peerId);
+    }
+  };
 
   return (
     <div className={cn('mb-1 flex min-w-0 items-center gap-1 text-xs leading-4', className)}>
       <span className={cn('shrink-0 whitespace-nowrap', labelClass)}>Forwarded from:</span>
-      {canOpenUserProfile && peerId ? (
+      {canOpenProfile && peerId ? (
         <button
           type="button"
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
-            sdk.user.openProfile(peerId);
+            handleOpenProfile();
           }}
           className="inline-flex min-w-0 cursor-pointer items-center gap-1 border-0 bg-transparent p-0 text-left hover:underline focus-visible:outline-none focus-visible:underline"
         >

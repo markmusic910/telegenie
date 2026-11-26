@@ -2,8 +2,8 @@
 
 import type { Message } from '@telegenie/sdk';
 import { buildMediaUrl, buildProgressiveUrl } from '@telegenie/sdk';
-import { X } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { Loader2, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import MediaSpoiler from '@/lib/components/media.spoiler';
 import { Button } from '@/lib/components/ui/button';
@@ -29,11 +29,17 @@ export default function DialogInfoMediaViewerDialog({
   onOpenChange,
 }: DialogInfoMediaViewerDialogProps) {
   const [spoilerRevealed, setSpoilerRevealed] = useState(false);
+  const [videoLoading, setVideoLoading] = useState(true);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     if (!open) {
       setSpoilerRevealed(false);
+      setVideoLoading(true);
+      return;
     }
+    const video = videoRef.current;
+    setVideoLoading(!(video && video.readyState >= 3));
   }, [open, message?.id]);
 
   const payload = useMemo(() => {
@@ -121,7 +127,15 @@ export default function DialogInfoMediaViewerDialog({
         className="fixed inset-0 flex h-[100dvh] w-screen max-w-none flex-col rounded-none border-0 bg-black/95 p-0 shadow-none"
         portalProps={{ container: typeof document !== 'undefined' ? document.body : undefined }}
       >
-        <div className="relative flex min-h-0 flex-1 items-center justify-center p-4 sm:p-8">
+        <div
+          data-testid="media-viewer-mask"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              onOpenChange(false);
+            }
+          }}
+          className="relative flex min-h-0 flex-1 items-center justify-center p-4 sm:p-8"
+        >
           <Button
             type="button"
             variant="ghost"
@@ -140,20 +154,40 @@ export default function DialogInfoMediaViewerDialog({
               className="size-72 rounded-2xl sm:size-96"
             />
           ) : payload.kind === 'video' ? (
-            <video
-              key={`${message?.id}-video`}
-              src={payload.streamUrl}
-              poster={payload.poster}
-              controls={!message?.isGif}
-              autoPlay
-              muted={message?.isGif}
-              loop={message?.isGif}
-              playsInline
-              className={cn(
-                'max-h-[min(85vh,900px)] max-w-[min(92vw,1200px)] object-contain',
-                'outline-none',
-              )}
-            />
+            <div className="relative inline-flex items-center justify-center">
+              <video
+                ref={videoRef}
+                key={`${message?.id}-video`}
+                src={payload.streamUrl}
+                poster={payload.poster}
+                controls={!message?.isGif}
+                autoPlay
+                muted={message?.isGif}
+                loop={message?.isGif}
+                playsInline
+                onLoadStart={() => setVideoLoading(true)}
+                onWaiting={() => setVideoLoading(true)}
+                onLoadedData={() => setVideoLoading(false)}
+                onCanPlay={() => setVideoLoading(false)}
+                onPlaying={() => setVideoLoading(false)}
+                onError={() => setVideoLoading(false)}
+                className={cn(
+                  'max-h-[min(85vh,900px)] max-w-[min(92vw,1200px)] object-contain',
+                  'outline-none',
+                )}
+              />
+              {videoLoading ? (
+                <div
+                  role="status"
+                  aria-label="Loading video"
+                  className="pointer-events-none absolute inset-0 flex items-center justify-center"
+                >
+                  <span className="flex size-12 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-xs">
+                    <Loader2 className="size-6 animate-spin" aria-hidden="true" />
+                  </span>
+                </div>
+              ) : null}
+            </div>
           ) : (
             <img
               key={`${message?.id}-photo`}

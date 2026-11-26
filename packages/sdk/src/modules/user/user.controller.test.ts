@@ -139,7 +139,7 @@ describe('UserController profile navigation & mutations', () => {
     return { sm, globalStore, userStore, userFullStore, dialogStore };
   }
 
-  it('pushes, deduplicates, pops, and clears profile stack while skipping self/deleted/non-users', () => {
+  it('pushes, deduplicates, pops, and clears profile stack while skipping deleted/non-users', () => {
     const { sm, globalStore, userStore } = setupStores();
     userStore.update([
       new User({ id: '42', firstName: 'Poolitzer', accessHash: '777' } as UserEntity),
@@ -154,11 +154,14 @@ describe('UserController profile navigation & mutations', () => {
     });
     const controller = createController(sm, call, globalStore);
 
-    // Skips self (Saved Messages), deleted user, and channel IDs
-    expect(controller.openProfile('1')).toBe(false);
+    // Skips deleted user and channel IDs
     expect(controller.openProfile('99')).toBe(false);
     expect(controller.openProfile('-100123456')).toBe(false);
     expect(globalStore.nav.activeProfilePeerId).toBeUndefined();
+
+    // Allows opening own profile (e.g. clicking self in "Forwarded from")
+    expect(controller.openProfile('1')).toBe(true);
+    expect(controller.popProfile()).toBe('1');
 
     // Pushes valid user and triggers background getFullUsers with forceRefresh
     expect(controller.openProfile('42')).toBe(true);

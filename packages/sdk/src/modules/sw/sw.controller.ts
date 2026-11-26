@@ -1,5 +1,9 @@
 import { Controller, Method, RequestLog } from '@telegenie/decorators';
 import type { TelegramWorkerClient } from '@telegenie/libs/foundation/telegram/worker';
+import {
+  BRIDGE_KIND_REQUEST,
+  type BridgeMessage,
+} from '@telegenie/libs/foundation/telegram/worker/sw-bridge-protocol';
 
 import { IS_SERVICE_WORKER_SUPPORTED } from '../../consts';
 import type { FocusMessagePayload } from '@telegenie/libs/types/leader-tab.api';
@@ -32,6 +36,7 @@ export class SwController {
 
   private readonly leaderTab: LeaderTab;
   private unwatchControllerChange: (() => void) | undefined;
+  private unwatchBridgeRequest: (() => void) | undefined;
 
   constructor({ globalStore, getTabId, showNotification, onFocusMessage }: SwControllerOptions) {
     this.globalStore = globalStore;
@@ -89,11 +94,37 @@ export class SwController {
     };
   }
 
+  /** Leader only: re-bridge when a restarted SW asks controlled tabs for fresh ports. */
+  @RequestLog()
+  @Method()
+  watchBridgeRequest(onRequest: () => void): void {
+    if (!this.isLeader) {
+      return;
+    }
+    if (typeof navigator === 'undefined' || !navigator.serviceWorker) {
+      return;
+    }
+    this.unwatchBridgeRequest?.();
+    const handler = (event: MessageEvent) => {
+      if (!this.isLeader) return;
+      const data = event.data as BridgeMessage | null | undefined;
+      if (data && typeof data === 'object' && data.kind === BRIDGE_KIND_REQUEST) {
+        onRequest();
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', handler);
+    this.unwatchBridgeRequest = () => {
+      navigator.serviceWorker.removeEventListener('message', handler);
+    };
+  }
+
   @RequestLog()
   @Method()
   disconnectLeaderBridges(): void {
     this.unwatchControllerChange?.();
     this.unwatchControllerChange = undefined;
+    this.unwatchBridgeRequest?.();
+    this.unwatchBridgeRequest = undefined;
     this.leaderTab.disconnect();
   }
 

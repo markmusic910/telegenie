@@ -296,9 +296,11 @@ var LEADER_HEARTBEAT_TTL_MS = 8e3;
 // ../libs/dist/foundation/telegram/worker/sw-bridge-protocol.js
 var BRIDGE_KIND_INIT = "bridge.init";
 var BRIDGE_KIND_READY = "bridge.ready";
+var BRIDGE_KIND_REQUEST = "bridge.request";
 var BRIDGE_LINK_SW_TELEGRAM = "sw-telegram";
 var BRIDGE_LINK_SW_LEADER = "sw-leader";
 var BRIDGE_READY_MESSAGE = { kind: BRIDGE_KIND_READY };
+var BRIDGE_REQUEST_MESSAGE = { kind: BRIDGE_KIND_REQUEST };
 function createBridgeInitMessage(link) {
   return { kind: BRIDGE_KIND_INIT, payload: { link } };
 }
@@ -943,11 +945,16 @@ var FilePartQueue = class {
 };
 var FetchManager = class {
   getTelegramRpc;
+  ensureTelegramRpc;
   assetCacheManager = new CacheManager({ cleanupInterval: 0 });
   progressiveCacheManager = new CacheManager();
   mediaCacheManager = new CacheManager();
   constructor(options) {
     this.getTelegramRpc = options.getTelegramRpc;
+    this.ensureTelegramRpc = options.ensureTelegramRpc;
+  }
+  async resolveTelegramRpc() {
+    return this.getTelegramRpc() ?? await this.ensureTelegramRpc?.();
   }
   init() {
     self.addEventListener("fetch", (e) => this.handleFetch(e));
@@ -995,7 +1002,7 @@ var FetchManager = class {
   }
   // --- Telegram-backed part fetch ------------------------------------------------
   async requestPart(params) {
-    const rpc = this.getTelegramRpc();
+    const rpc = await this.resolveTelegramRpc();
     if (!rpc) {
       console.error("[SW] requestPart: Telegram RPC is not connected (sw-telegram bridge missing)");
       return void 0;
@@ -1101,7 +1108,7 @@ var FetchManager = class {
     };
   }
   async requestDownloadFiles(items) {
-    const rpc = this.getTelegramRpc();
+    const rpc = await this.resolveTelegramRpc();
     if (!rpc) {
       return void 0;
     }
@@ -1115,7 +1122,7 @@ var FetchManager = class {
     }
   }
   async requestDownloadPeerPhotos(items) {
-    const rpc = this.getTelegramRpc();
+    const rpc = await this.resolveTelegramRpc();
     if (!rpc) {
       return void 0;
     }
@@ -1594,6 +1601,7 @@ var NotificationManager = class {
 
 // src/telegenie.service-worker.ts
 var ACTIVATE_TIMEOUT = 3e3;
+var BRIDGE_RECONNECT_TIMEOUT_MS = 5e3;
 var TeleGenieServiceWorker = class {
   initialized = false;
   broadcast;
@@ -1603,11 +1611,14 @@ var TeleGenieServiceWorker = class {
   telegramSlot;
   leaderSlot;
   unsubTelegramNotifications;
+  pendingTelegramBridge;
+  resolvePendingTelegramBridge;
   notifications = new NotificationManager({
     getLeaderRpc: () => this.leaderRpc
   });
   fetchManager = new FetchManager({
-    getTelegramRpc: () => this.telegramRpc
+    getTelegramRpc: () => this.telegramRpc,
+    ensureTelegramRpc: () => this.ensureTelegramRpc()
   });
   get leaderTabId() {
     return this._leaderTabId;
@@ -1628,6 +1639,7 @@ var TeleGenieServiceWorker = class {
     this.fetchManager.init();
     this.notifications.init();
     this.initBridgeMessageListener();
+    void this.requestBridgeReconnect();
   }
   initLeaderTracker() {
     this.broadcast = createBroadcastBus({ name: DEFAULT_BROADCAST_CHANNEL_NAME });
@@ -1741,6 +1753,9 @@ var TeleGenieServiceWorker = class {
       this.unsubTelegramNotifications = client2.on("messageNotification", (payload) => {
         void this.notifications.onTelegramMessageNotification(payload);
       });
+      this.resolvePendingTelegramBridge?.(client2);
+      this.resolvePendingTelegramBridge = void 0;
+      this.pendingTelegramBridge = void 0;
       return;
     }
     this.disposeLeaderBridge();
@@ -1767,6 +1782,59 @@ var TeleGenieServiceWorker = class {
     } catch {
     }
     this.leaderSlot = void 0;
+  }
+  /**
+   * Ensure the SW↔Telegram SharedWorker RPC bridge is connected.
+   * When the browser terminates an idle SW and restarts it on a fetch event,
+   * in-memory MessagePorts are lost; ask controlled tabs so the leader tab
+   * re-brokers the bridges and await attachment.
+   */
+  ensureTelegramRpc(timeoutMs = BRIDGE_RECONNECT_TIMEOUT_MS) {
+    if (this.telegramSlot) {
+      return Promise.resolve(this.telegramSlot.client);
+    }
+    if (this.pendingTelegramBridge) {
+      return this.pendingTelegramBridge;
+    }
+    this.pendingTelegramBridge = new Promise((resolve) => {
+      let settled = false;
+      const finish = (client) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (this.resolvePendingTelegramBridge === finish) {
+          this.resolvePendingTelegramBridge = void 0;
+          this.pendingTelegramBridge = void 0;
+        }
+        resolve(client);
+      };
+      const timer = setTimeout(() => {
+        finish(this.telegramSlot?.client);
+      }, timeoutMs);
+      this.resolvePendingTelegramBridge = finish;
+      void this.requestBridgeReconnect();
+    });
+    return this.pendingTelegramBridge;
+  }
+  async requestBridgeReconnect() {
+    try {
+      const clients = await self.clients.matchAll({
+        type: "window",
+        includeUncontrolled: false
+      });
+      if (DEBUG && clients.length > 0) {
+        console.log(
+          `[SW] requestBridgeReconnect: requesting bridge from ${clients.length} window client(s)`
+        );
+      }
+      for (const client of clients) {
+        client.postMessage(BRIDGE_REQUEST_MESSAGE);
+      }
+    } catch (err) {
+      if (DEBUG) {
+        console.warn("[SW] requestBridgeReconnect failed:", err);
+      }
+    }
   }
 };
 

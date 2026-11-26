@@ -3,7 +3,7 @@
 import { fallbackPeerDisplay, peerProfileDisplay } from '@telegenie/sdk';
 import { Search } from 'lucide-react';
 import { observer } from 'mobx-react-lite';
-import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 
 import PeerAvatar from '@/lib/components/peer.avatar';
 import { Button } from '@/lib/components/ui/button';
@@ -109,15 +109,18 @@ const ChatPickerRow = observer(function ChatPickerRow({
   );
 });
 
+const EMPTY_STRINGS: string[] = [];
+const EMPTY_CHAT_TYPES: ChatPickerTypeOption[] = [];
+
 const ChatPickerDialog = observer(function ChatPickerDialog({
   open,
   onOpenChange,
   title,
   mode,
-  selectedPeerIds = [],
-  disabledPeerIds = [],
-  chatTypes = [],
-  selectedChatTypes = [],
+  selectedPeerIds = EMPTY_STRINGS,
+  disabledPeerIds = EMPTY_STRINGS,
+  chatTypes = EMPTY_CHAT_TYPES,
+  selectedChatTypes = EMPTY_STRINGS,
   includeSavedMessages = true,
   includeArchived = false,
   confirmLabel = 'Save',
@@ -131,12 +134,15 @@ const ChatPickerDialog = observer(function ChatPickerDialog({
   const [query, setQuery] = useState('');
   const [draftPeers, setDraftPeers] = useState<Set<string>>(() => new Set(selectedPeerIds));
   const [draftTypes, setDraftTypes] = useState<Set<string>>(() => new Set(selectedChatTypes));
+  const wasOpenRef = useRef(false);
 
   useEffect(() => {
-    if (!open) return;
-    setQuery('');
-    setDraftPeers(new Set(selectedPeerIds));
-    setDraftTypes(new Set(selectedChatTypes));
+    if (open && !wasOpenRef.current) {
+      setQuery('');
+      setDraftPeers(new Set(selectedPeerIds));
+      setDraftTypes(new Set(selectedChatTypes));
+    }
+    wasOpenRef.current = open;
   }, [open, selectedPeerIds, selectedChatTypes]);
 
   const disabledSet = useMemo(() => new Set(disabledPeerIds), [disabledPeerIds]);

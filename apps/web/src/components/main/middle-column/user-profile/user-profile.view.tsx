@@ -167,13 +167,17 @@ const UserProfileView = observer(function UserProfileView({ peerId }: UserProfil
   const bioText = (userFull?.about || userFull?.botInfo?.description || '').trim();
   const birthdayText = formatBirthdayDisplay(userFull?.birthday);
 
+  const currentUserId = sdk.globalStore?.auth?.currentUser?.id;
+  const isSelf = Boolean(user?.self || (currentUserId && String(currentUserId) === peerId));
   const muteUntil = dialog?.notifySettings?.muteUntil ?? userFull?.notifySettings?.muteUntil;
   const isMuted = isNotifyMuted(muteUntil);
   const isBlocked = Boolean(userFull?.blocked);
   const isContact = Boolean(user?.contact);
-  const canManageContact = !user?.bot && !isServiceNotifications && !user?.deleted;
-  const canStartSecretChat = !user?.bot && !isServiceNotifications && !user?.deleted;
-  const callsAvailable = Boolean(userFull?.phoneCallsAvailable) && !user?.bot && !isServiceNotifications;
+  const canManageContact = !isSelf && !user?.bot && !isServiceNotifications && !user?.deleted;
+  const canStartSecretChat = !isSelf && !user?.bot && !isServiceNotifications && !user?.deleted;
+  const callsAvailable =
+    !isSelf && Boolean(userFull?.phoneCallsAvailable) && !user?.bot && !isServiceNotifications;
+  const canBlock = !isSelf && !isServiceNotifications;
 
   const handleOpenChat = useCallback(() => {
     sdk.user.closeProfile();
@@ -255,7 +259,7 @@ const UserProfileView = observer(function UserProfileView({ peerId }: UserProfil
       bioText ||
       birthdayText ||
       (canManageContact && !isContact) ||
-      !isServiceNotifications,
+      canBlock,
   );
 
   const actionTileClass =
@@ -372,7 +376,7 @@ const UserProfileView = observer(function UserProfileView({ peerId }: UserProfil
                   </MenuItem>
                 ) : null}
 
-                {!isServiceNotifications ? (
+                {canBlock ? (
                   <>
                     <MenuSeparator />
                     <MenuItem
@@ -457,7 +461,7 @@ const UserProfileView = observer(function UserProfileView({ peerId }: UserProfil
                 </button>
               ) : null}
 
-              {!isServiceNotifications ? (
+              {canBlock ? (
                 <button
                   type="button"
                   disabled={actionBusy}

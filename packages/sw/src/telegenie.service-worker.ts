@@ -13,6 +13,7 @@ import {
   BRIDGE_KIND_INIT,
   BRIDGE_LINK_SW_TELEGRAM,
   BRIDGE_READY_MESSAGE,
+  BRIDGE_REQUEST_MESSAGE,
   getBridgeLink,
   type BridgeLink,
   type BridgeMessage,
@@ -28,6 +29,7 @@ import { NotificationManager } from './notification-manager';
 declare const self: ServiceWorkerGlobalScope;
 
 const ACTIVATE_TIMEOUT = 3000;
+const BRIDGE_RECONNECT_TIMEOUT_MS = 5000;
 
 type RpcSlot<
   P extends Record<string, { args: unknown[]; result: unknown }>,
@@ -58,6 +60,12 @@ export class TeleGenieServiceWorker {
   private telegramSlot: RpcSlot<TelegramWorkerApi, TelegramWorkerEvents> | undefined;
   private leaderSlot: RpcSlot<LeaderTabApi> | undefined;
   private unsubTelegramNotifications: (() => void) | undefined;
+  private pendingTelegramBridge:
+    | Promise<WorkerClient<TelegramWorkerApi, TelegramWorkerEvents> | undefined>
+    | undefined;
+  private resolvePendingTelegramBridge:
+    | ((client: WorkerClient<TelegramWorkerApi, TelegramWorkerEvents> | undefined) => void)
+    | undefined;
 
   private readonly notifications = new NotificationManager({
     getLeaderRpc: () => this.leaderRpc,
@@ -65,6 +73,7 @@ export class TeleGenieServiceWorker {
 
   private readonly fetchManager = new FetchManager({
     getTelegramRpc: () => this.telegramRpc,
+    ensureTelegramRpc: () => this.ensureTelegramRpc(),
   });
 
   get leaderTabId(): string | undefined {
@@ -90,6 +99,9 @@ export class TeleGenieServiceWorker {
     this.fetchManager.init();
     this.notifications.init();
     this.initBridgeMessageListener();
+    // If the browser restarted an idle SW while tabs are still open, ask the
+    // leader tab to re-attach the MessagePort bridges proactively.
+    void this.requestBridgeReconnect();
   }
 
   private initLeaderTracker(): void {
@@ -218,6 +230,9 @@ export class TeleGenieServiceWorker {
       this.unsubTelegramNotifications = client.on('messageNotification', (payload) => {
         void this.notifications.onTelegramMessageNotification(payload);
       });
+      this.resolvePendingTelegramBridge?.(client);
+      this.resolvePendingTelegramBridge = undefined;
+      this.pendingTelegramBridge = undefined;
       return;
     }
 
@@ -249,5 +264,68 @@ export class TeleGenieServiceWorker {
       // ignore
     }
     this.leaderSlot = undefined;
+  }
+
+  /**
+   * Ensure the SW↔Telegram SharedWorker RPC bridge is connected.
+   * When the browser terminates an idle SW and restarts it on a fetch event,
+   * in-memory MessagePorts are lost; ask controlled tabs so the leader tab
+   * re-brokers the bridges and await attachment.
+   */
+  private ensureTelegramRpc(
+    timeoutMs = BRIDGE_RECONNECT_TIMEOUT_MS,
+  ): Promise<WorkerClient<TelegramWorkerApi, TelegramWorkerEvents> | undefined> {
+    if (this.telegramSlot) {
+      return Promise.resolve(this.telegramSlot.client);
+    }
+    if (this.pendingTelegramBridge) {
+      return this.pendingTelegramBridge;
+    }
+
+    this.pendingTelegramBridge = new Promise((resolve) => {
+      let settled = false;
+      const finish = (
+        client: WorkerClient<TelegramWorkerApi, TelegramWorkerEvents> | undefined,
+      ) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (this.resolvePendingTelegramBridge === finish) {
+          this.resolvePendingTelegramBridge = undefined;
+          this.pendingTelegramBridge = undefined;
+        }
+        resolve(client);
+      };
+
+      const timer = setTimeout(() => {
+        finish(this.telegramSlot?.client);
+      }, timeoutMs);
+
+      this.resolvePendingTelegramBridge = finish;
+      void this.requestBridgeReconnect();
+    });
+
+    return this.pendingTelegramBridge;
+  }
+
+  private async requestBridgeReconnect(): Promise<void> {
+    try {
+      const clients = await self.clients.matchAll({
+        type: 'window',
+        includeUncontrolled: false,
+      });
+      if (DEBUG && clients.length > 0) {
+        console.log(
+          `[SW] requestBridgeReconnect: requesting bridge from ${clients.length} window client(s)`,
+        );
+      }
+      for (const client of clients) {
+        client.postMessage(BRIDGE_REQUEST_MESSAGE);
+      }
+    } catch (err) {
+      if (DEBUG) {
+        console.warn('[SW] requestBridgeReconnect failed:', err);
+      }
+    }
   }
 }

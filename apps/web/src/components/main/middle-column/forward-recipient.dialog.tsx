@@ -2,6 +2,7 @@
 
 import { observer } from 'mobx-react-lite';
 import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 
 import ChatPickerDialog from '@/lib/components/chat-picker.dialog';
 import { useSDK, useStore } from '@/lib/contexts/sdk.context';
@@ -38,7 +39,10 @@ const ForwardRecipientDialog = observer(function ForwardRecipientDialog({
     try {
       if (selfId && peerId === selfId) {
         const result = await sdk.messageSend.forwardToSavedMessages(fromPeerId, messageId);
-        if (!result.ok) return;
+        if (result.ok === false) {
+          toast.error(result.error || 'Could not forward message.', { duration: Infinity });
+          return;
+        }
       } else {
         sdk.messageDraft.stageForward(peerId, fromPeerId, messageId);
         await selectDialog(peerId);

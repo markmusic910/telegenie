@@ -5,6 +5,7 @@ import type { MessageMediaWebPage } from '@telegenie/libs/foundation/telegram/ty
 
 import MediaWebPage from '@/lib/components/media.webpage';
 
+import DialogInfoItemContextMenu from './dialog-info-item.context-menu';
 import { isLinkMessage } from './dialog-info.tab-content.utils';
 
 function firstUrlInText(text: string | undefined): string | undefined {
@@ -16,13 +17,20 @@ function firstUrlInText(text: string | undefined): string | undefined {
 export interface DialogInfoLinkRowProps {
   message: Message;
   peerId: string;
+  onShowMessage: () => void;
 }
 
-export default function DialogInfoLinkRow({ message, peerId }: DialogInfoLinkRowProps) {
+export default function DialogInfoLinkRow({
+  message,
+  peerId,
+  onShowMessage,
+}: DialogInfoLinkRowProps) {
   const media = message.media;
 
+  let content: React.ReactNode = null;
+
   if (media && isLinkMessage(message) && 'webpage' in media) {
-    return (
+    content = (
       <MediaWebPage
         media={media as MessageMediaWebPage}
         peerId={peerId}
@@ -32,29 +40,40 @@ export default function DialogInfoLinkRow({ message, peerId }: DialogInfoLinkRow
         className="shadow-none"
       />
     );
+  } else {
+    const url = firstUrlInText(message.message);
+    if (!url) return null;
+
+    const syntheticMedia: MessageMediaWebPage = {
+      webpage: {
+        url,
+        displayUrl: url,
+        siteName: undefined,
+        title: undefined,
+        description: undefined,
+      },
+    };
+
+    content = (
+      <MediaWebPage
+        media={syntheticMedia}
+        peerId={peerId}
+        messageId={Number(message.id)}
+        variant="profile"
+        fallbackText={message.message ?? undefined}
+        className="shadow-none"
+      />
+    );
   }
 
-  const url = firstUrlInText(message.message);
-  if (!url) return null;
-
-  const syntheticMedia: MessageMediaWebPage = {
-    webpage: {
-      url,
-      displayUrl: url,
-      siteName: undefined,
-      title: undefined,
-      description: undefined,
-    },
-  };
-
   return (
-    <MediaWebPage
-      media={syntheticMedia}
+    <DialogInfoItemContextMenu
       peerId={peerId}
-      messageId={Number(message.id)}
-      variant="profile"
-      fallbackText={message.message ?? undefined}
-      className="shadow-none"
-    />
+      messageId={String(message.id)}
+      onShowMessage={onShowMessage}
+      triggerClassName="block w-full"
+    >
+      {content}
+    </DialogInfoItemContextMenu>
   );
 }

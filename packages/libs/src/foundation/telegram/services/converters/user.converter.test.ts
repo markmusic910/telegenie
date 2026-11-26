@@ -342,7 +342,7 @@ describe('convertUser', () => {
       firstName: '',
       lastName: '',
       username: '',
-      phone: '',
+      phone: undefined,
       self: false,
       contact: false,
       bot: false,

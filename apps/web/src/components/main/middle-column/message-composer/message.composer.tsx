@@ -18,12 +18,14 @@ import { useStableCallback } from '@/lib/hooks/use-stable-callback';
 import { cn } from '@/lib/utils';
 import { coveringCustomEmojiId, rebaseEntities, soleEmoji } from '@/lib/utils/emoji.grapheme';
 import {
+  buildMediaUrl,
   Channel,
   Chat,
   Dialog,
   MAIN_THREAD_ID,
   SERVICE_NOTIFICATIONS_USER_ID,
   type Document,
+  type Message,
   type OutgoingMessageEntity,
   type User,
 } from '@telegenie/sdk';
@@ -31,6 +33,7 @@ import type { InputCompletionOption } from '@telegenie/agent/worker';
 import { BellOff, Check, Clock, Forward, Pencil, Send, Smile, X } from 'lucide-react';
 import { observer } from 'mobx-react-lite';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { toast } from 'sonner';
 import { z } from 'zod';
 import ComposerAttachMenu from './composer-attach.menu';
 import ComposerCompleteSuggest from './composer-complete.suggest';
@@ -129,16 +132,80 @@ const ComposerReply = observer(function ComposerReply({
   );
 });
 
+function forwardPreviewUrl(message: Message | null | undefined, peerId: string): string | undefined {
+  if (!message) return undefined;
+  const numericId = Number(message.id);
+  const messageId = Number.isInteger(numericId) && numericId > 0 ? numericId : undefined;
+
+  if (message.photo) {
+    return buildMediaUrl({
+      fileId: `p:${message.photo.id}`,
+      accessHash: message.photo.accessHash,
+      dcId: message.photo.dcId,
+      mimeType: 'image/jpeg',
+      thumbSize: 'm',
+      peerId,
+      messageId,
+    });
+  }
+  if (message.photoDocument) {
+    return buildMediaUrl({
+      fileId: `d:${message.photoDocument.id}`,
+      accessHash: message.photoDocument.accessHash,
+      dcId: message.photoDocument.dcId,
+      mimeType: message.photoDocument.mimeType || 'image/jpeg',
+      fileSize: Number(message.photoDocument.size),
+      peerId,
+      messageId,
+    });
+  }
+  if (message.videoCover) {
+    return buildMediaUrl({
+      fileId: `p:${message.videoCover.id}`,
+      accessHash: message.videoCover.accessHash,
+      dcId: message.videoCover.dcId,
+      mimeType: 'image/jpeg',
+      thumbSize: 'm',
+      peerId,
+      messageId,
+    });
+  }
+  return message.previewThumbDataUri;
+}
+
 const ComposerForward = observer(function ComposerForward({ peerId }: { peerId: string }) {
   const sdk = useSDK();
   const thread = useGlobalStoreThread(peerId);
   const forwarding = thread?.forwarding;
   const message = useMessage(forwarding?.fromPeerId, forwarding?.messageId);
+  const [useFallbackThumb, setUseFallbackThumb] = useState(false);
+
+  useEffect(() => {
+    setUseFallbackThumb(false);
+  }, [forwarding?.fromPeerId, forwarding?.messageId]);
+
   if (!forwarding) return null;
+  const primaryThumb = forwardPreviewUrl(message, forwarding.fromPeerId);
+  const thumbSrc = useFallbackThumb ? message?.previewThumbDataUri : (primaryThumb ?? message?.previewThumbDataUri);
+
   return (
     <div className="flex min-w-0 flex-col gap-1">
       <div className="flex min-w-0 items-center gap-2 border-s-2 border-primary ps-2">
         <Forward className="size-4 shrink-0 text-primary" aria-hidden />
+        {thumbSrc ? (
+          <img
+            src={thumbSrc}
+            alt=""
+            data-testid="forward-preview-thumb"
+            onError={() => {
+              if (!useFallbackThumb && message?.previewThumbDataUri && thumbSrc !== message.previewThumbDataUri) {
+                setUseFallbackThumb(true);
+              }
+            }}
+            className="size-8 shrink-0 rounded bg-muted object-cover"
+            draggable={false}
+          />
+        ) : null}
         <MessagePreview
           variant="reply"
           text={message?.summaryText || 'Message'}
@@ -455,17 +522,24 @@ const MessageComposer = observer(function MessageComposer({ peerId }: MessageCom
     try {
       if (value.trim().length > 0) {
         const result = await sdk.messageSend.sendText(peerId, value);
-        if (!result.ok) {
-          setError('Could not send');
+        if (result.ok === false) {
+          const msg = result.error || 'Could not send';
+          setError(msg);
+          toast.error(msg, { duration: Infinity });
           return;
         }
       }
       if (staged) {
         const forwarded = await sdk.messageSend.forwardStaged(peerId);
-        if (!forwarded.ok) setError('Could not forward');
+        if (forwarded.ok === false) {
+          const msg = forwarded.error || 'Could not forward message.';
+          toast.error(msg, { duration: Infinity });
+        }
       }
-    } catch {
-      setError('Could not send');
+    } catch (err) {
+      const msg = err instanceof Error && err.message ? err.message : 'Could not send';
+      setError(msg);
+      toast.error(msg, { duration: Infinity });
     } finally {
       sendingRef.current = false;
       setSending(false);
@@ -838,7 +912,13 @@ const MessageComposer = observer(function MessageComposer({ peerId }: MessageCom
                 ref={inputRef}
                 aria-label="Message"
                 aria-invalid={error ? true : undefined}
-                placeholder={postingBlocked && !editing ? "You can't send messages here" : 'Message'}
+                placeholder={
+                  postingBlocked && !editing
+                    ? "You can't send messages here"
+                    : forwarding
+                      ? 'Add a comment (optional)'
+                      : 'Message'
+                }
                 size="sm"
                 rows={1}
                 value={text}

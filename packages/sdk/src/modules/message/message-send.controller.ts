@@ -62,7 +62,47 @@ export type SendMediaGroupOptions = {
   abortSignal?: AbortSignal;
 };
 
-export type SendTextResult = { ok: true; messageId: number } | { ok: false };
+export type SendTextResult = { ok: true; messageId: number } | { ok: false; error?: string };
+
+function formatSendError(err: unknown): string {
+  const raw =
+    err && typeof err === 'object' && 'errorMessage' in err && typeof err.errorMessage === 'string'
+      ? err.errorMessage
+      : err instanceof Error
+        ? err.message
+        : typeof err === 'string'
+          ? err
+          : '';
+  const code = raw.trim();
+  if (!code) return 'Request failed';
+  if (code.includes('CHAT_FORWARDS_RESTRICTED')) {
+    return 'Forwarding is restricted in this chat.';
+  }
+  if (code.includes('CHAT_WRITE_FORBIDDEN')) {
+    return 'You do not have permission to send messages in this chat.';
+  }
+  if (
+    code.includes('CHAT_SEND_MEDIA_FORBIDDEN') ||
+    code.includes('CHAT_SEND_PHOTOS_FORBIDDEN') ||
+    code.includes('CHAT_SEND_VIDEOS_FORBIDDEN')
+  ) {
+    return 'Sending media is not allowed in this chat.';
+  }
+  if (code.includes('USER_IS_BLOCKED')) {
+    return 'Cannot send messages to a blocked user.';
+  }
+  if (code.includes('PEER_ID_INVALID') || code.includes('CHANNEL_INVALID') || code.includes('USER_ID_INVALID')) {
+    return 'Invalid destination chat.';
+  }
+  if (code.includes('MESSAGE_ID_INVALID') || code.includes('MESSAGE_IDS_EMPTY')) {
+    return 'The selected message can no longer be forwarded.';
+  }
+  const slowMode = /SLOWMODE_WAIT_(\d+)/.exec(code);
+  if (slowMode) {
+    return `Slow mode is enabled. Please wait ${slowMode[1]}s before sending again.`;
+  }
+  return code;
+}
 
 type ActiveUploadEntry = {
   peerId: string;
@@ -145,11 +185,11 @@ export class MessageSendController {
         replyToMsgId,
         entities,
       );
-    } catch {
-      return { ok: false };
+    } catch (err) {
+      return { ok: false, error: formatSendError(err) };
     }
     if (!Number.isInteger(messageId) || messageId <= 0) {
-      return { ok: false };
+      return { ok: false, error: 'Failed to send message.' };
     }
 
     return this.finishOutbound(peerId, threadId, messageId, saveInFlight);
@@ -273,8 +313,8 @@ export class MessageSendController {
         toAccessHash,
         options,
       ]);
-    } catch {
-      return { ok: false };
+    } catch (err) {
+      return { ok: false, error: formatSendError(err) };
     }
     return { ok: true, messageId: ids[0] };
   }
@@ -329,8 +369,8 @@ export class MessageSendController {
     let messageId: number;
     try {
       messageId = await send(accessHash, replyToMsgId);
-    } catch {
-      return { ok: false };
+    } catch (err) {
+      return { ok: false, error: formatSendError(err) };
     }
     return this.finishOutbound(peerId, threadId, messageId, saveInFlight);
   }

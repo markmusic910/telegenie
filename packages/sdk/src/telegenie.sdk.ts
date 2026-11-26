@@ -545,14 +545,8 @@ export class TeleGenieSDK {
         globalStore: this.globalStore,
         broadcast: this.broadcast,
       });
-      const isLeader = await this.tabLeader.start();
+      await this.tabLeader.start();
       this.watchPersistLeadership();
-      if (isLeader) {
-        await this.sw.connectLeaderBridges(this.worker);
-        this.sw.watchControllerChange(() => {
-          void this.sw.connectLeaderBridges(this.worker);
-        });
-      }
 
       // Per-tab agent ↔ page bridge (TabPageApi host on this tab).
       await this.agent.connectPageBridge();
@@ -660,6 +654,9 @@ export class TeleGenieSDK {
           void this.storeCache?.persistSnapshot();
           void this.sw.connectLeaderBridges(this.worker);
           this.sw.watchControllerChange(() => {
+            void this.sw.connectLeaderBridges(this.worker);
+          });
+          this.sw.watchBridgeRequest(() => {
             void this.sw.connectLeaderBridges(this.worker);
           });
         } else {

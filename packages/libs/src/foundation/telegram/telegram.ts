@@ -1,5 +1,7 @@
 import { Api } from '@telegenie/teleproto';
+import { CustomFile } from '@telegenie/teleproto/client/uploads';
 
+import { buildInputPeer } from './helpers';
 import { peerIdFromMessage } from './helpers/peer-id.helper';
 import { FileRefEngine } from './file-ref/engine';
 import { LocalDb } from './local-db/local-db';
@@ -34,6 +36,7 @@ import type {
   FoundationDebugStore,
   MessageNotificationPayload,
   StoreSyncPayload,
+  WorkerFilePayload,
 } from './worker/telegram.api';
 
 export type TelegramOpenAccountOptions = Omit<LocalDbOptions, 'onEntityChange'> & {
@@ -235,6 +238,17 @@ export class Telegram {
       return { type: 'unavailable', peerId };
     }
     return this.localDb.resolveInputPeer(peerId);
+  }
+
+  async editPeerPhoto(peerId: string, file: WorkerFilePayload, accessHash?: string): Promise<void> {
+    const peer = buildInputPeer(peerId, accessHash);
+    const customFile = new CustomFile(
+      file.name,
+      file.buffer.byteLength,
+      '',
+      Buffer.from(file.buffer),
+    );
+    await this.transportService.client.editPhoto(peer, customFile);
   }
 
   /**

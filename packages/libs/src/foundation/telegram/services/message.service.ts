@@ -12,8 +12,15 @@ import {
   getEntityTypeById,
   isMessageEmpty,
 } from '../helpers';
-import { toApiInputPeer } from '../local-db/to-api-input-peer';
+import { toApiInputPeer, toApiInputPeerWithSeenPeer } from '../local-db/to-api-input-peer';
 import { LocalDb } from '../local-db/local-db';
+import type {
+  SendMediaWorkerPayload,
+  SendMediaWorkerProgressEvent,
+  SendMultiMediaWorkerPayload,
+  SendMultiMediaWorkerProgressEvent,
+  WorkerFilePayload,
+} from '../worker/telegram.api';
 import type { Channel, Chat, MessageEmpty } from '../types/api-types';
 import type { Message, MessageService as ConvertedMessageService } from '../types/message';
 import type { User } from '../types/users';
@@ -952,7 +959,6 @@ export class MessageService {
           media,
           message,
           randomId: messageRandomId(),
-          noforwards: true,
           clearDraft: true,
           scheduleDate: scheduleTime,
           invertMedia,
@@ -1205,7 +1211,6 @@ export class MessageService {
         peer,
         multiMedia,
         clearDraft: true,
-        noforwards: true,
         scheduleDate: options.scheduleTime,
         invertMedia: options.invertMedia,
         ...(options.replyToMsgId != null && options.replyToMsgId > 0
@@ -1250,7 +1255,6 @@ export class MessageService {
         peer: peer,
         message: message,
         randomId: messageRandomId(),
-        noforwards: true,
         clearDraft: true,
         scheduleDate: scheduleTime,
         ...(apiEntities ? { entities: apiEntities } : {}),
@@ -1563,6 +1567,334 @@ export class MessageService {
     }
   }
 
+  sendMessageByPeerId = async (
+    peerId: string,
+    message: string,
+    accessHash?: string,
+    scheduleTime?: number,
+    replyToMsgId?: number,
+    entities?: OutgoingMessageEntity[],
+  ): Promise<number> => {
+    const peer = await this.resolveInputPeerForWrite(peerId, accessHash);
+    try {
+      return await this.sendMessage(peer, message, scheduleTime, replyToMsgId, entities);
+    } catch (err) {
+      if (!isPeerIdInvalidError(err)) throw err;
+      const recovery = await this.refreshPeerForRetry(peerId);
+      if (recovery === 'none') throw err;
+      const retryPeer = await this.resolveInputPeerForWrite(
+        peerId,
+        accessHash,
+        recovery === 'minContext',
+      );
+      return this.sendMessage(retryPeer, message, scheduleTime, replyToMsgId, entities);
+    }
+  };
+
+  editMessageByPeerId = async (
+    peerId: string,
+    messageId: number,
+    message: string,
+    accessHash?: string,
+    entities?: OutgoingMessageEntity[],
+  ): Promise<void> => {
+    const peer = await this.resolveInputPeerForWrite(peerId, accessHash);
+    await this.editMessage(peer, messageId, message, entities);
+  };
+
+  forwardMessagesByPeerId = async (
+    fromPeerId: string,
+    toPeerId: string,
+    ids: number[],
+    fromAccessHash?: string,
+    toAccessHash?: string,
+    options?: ForwardMessagesOptions,
+  ): Promise<void> => {
+    const [fromPeer, toPeer] = await Promise.all([
+      this.resolveInputPeerForWrite(fromPeerId, fromAccessHash),
+      this.resolveInputPeerForWrite(toPeerId, toAccessHash),
+    ]);
+    try {
+      await this.forwardMessages(fromPeer, toPeer, ids, options);
+    } catch (err) {
+      if (!isPeerIdInvalidError(err)) throw err;
+      const [fromRecovery, toRecovery] = await Promise.all([
+        this.refreshPeerForRetry(fromPeerId),
+        this.refreshPeerForRetry(toPeerId),
+      ]);
+      if (fromRecovery === 'none' && toRecovery === 'none') throw err;
+      const [retryFrom, retryTo] = await Promise.all([
+        this.resolveInputPeerForWrite(fromPeerId, fromAccessHash, fromRecovery === 'minContext'),
+        this.resolveInputPeerForWrite(toPeerId, toAccessHash, toRecovery === 'minContext'),
+      ]);
+      await this.forwardMessages(retryFrom, retryTo, ids, options);
+    }
+  };
+
+  updatePinnedMessageByPeerId = async (
+    peerId: string,
+    messageId: number,
+    options?: UpdatePinnedMessageOptions,
+    accessHash?: string,
+  ): Promise<void> => {
+    const peer = await this.resolveInputPeerForWrite(peerId, accessHash);
+    await this.updatePinnedMessage(peer, messageId, options);
+  };
+
+  sendStickerByPeerId = async (
+    peerId: string,
+    document: SendStickerDocument,
+    accessHash?: string,
+    replyToMsgId?: number,
+    reloadFileReference?: () => Promise<string | undefined>,
+  ): Promise<number> => {
+    const peer = await this.resolveInputPeerForWrite(peerId, accessHash);
+    return this.sendSticker(peer, document, replyToMsgId, reloadFileReference);
+  };
+
+  sendGifResultByPeerId = async (
+    peerId: string,
+    queryId: string,
+    resultId: string,
+    accessHash?: string,
+    replyToMsgId?: number,
+  ): Promise<number> => {
+    const peer = await this.resolveInputPeerForWrite(peerId, accessHash);
+    return this.sendGifResult(peer, queryId, resultId, replyToMsgId);
+  };
+
+  saveDraftByPeerId = async (
+    peerId: string,
+    message: string,
+    accessHash?: string,
+    replyToMsgId?: number,
+    entities?: OutgoingMessageEntity[],
+  ): Promise<void> => {
+    const peer = await this.resolveInputPeerForWrite(peerId, accessHash);
+    await this.saveDraft(peer, message, replyToMsgId, entities);
+  };
+
+  sendMediaByPeerId = async (
+    peerId: string,
+    file: WorkerFilePayload,
+    message?: string,
+    accessHash?: string,
+    scheduleTime?: number,
+    replyToMsgId?: number,
+    forceDocument?: boolean,
+  ): Promise<number> => {
+    const peer = await this.resolveInputPeerForWrite(peerId, accessHash);
+    return this.sendMedia(
+      peer,
+      fileFromPayload(file),
+      message,
+      scheduleTime,
+      replyToMsgId,
+      forceDocument,
+    );
+  };
+
+  async *streamSendMedia(
+    payload: SendMediaWorkerPayload,
+  ): AsyncGenerator<SendMediaWorkerProgressEvent> {
+    const peer = await this.resolveInputPeerForWrite(payload.peerId, payload.accessHash);
+    const queue: SendMediaWorkerProgressEvent[] = [];
+    let notify: (() => void) | undefined;
+    let finished = false;
+    let sendError: unknown;
+
+    const sendPromise = this.sendMediaWithOptions(
+      peer,
+      fileFromPayload(payload.file),
+      payload.message,
+      {
+        scheduleTime: payload.scheduleTime,
+        replyToMsgId: payload.replyToMsgId,
+        forceDocument: payload.forceDocument,
+        spoiler: payload.spoiler,
+        invertMedia: payload.invertMedia,
+        videoCover: payload.videoCover ? fileFromPayload(payload.videoCover) : undefined,
+        entities: payload.entities,
+        uploadId: payload.uploadId,
+        width: payload.width,
+        height: payload.height,
+        duration: payload.duration,
+        onProgress: (event) => {
+          queue.push(event);
+          notify?.();
+        },
+      },
+    )
+      .then((messageId) => {
+        queue.push({ stage: 'done', messageId });
+        finished = true;
+        notify?.();
+      })
+      .catch((err) => {
+        sendError = err;
+        finished = true;
+        notify?.();
+      });
+
+    while (!finished || queue.length > 0) {
+      if (queue.length > 0) {
+        yield queue.shift()!;
+      } else {
+        await new Promise<void>((resolve) => {
+          notify = resolve;
+        });
+      }
+    }
+
+    await sendPromise;
+    if (sendError) throw sendError;
+  }
+
+  async *streamSendMultiMedia(
+    payload: SendMultiMediaWorkerPayload,
+  ): AsyncGenerator<SendMultiMediaWorkerProgressEvent> {
+    const peer = await this.resolveInputPeerForWrite(payload.peerId, payload.accessHash);
+    const queue: SendMultiMediaWorkerProgressEvent[] = [];
+    let notify: (() => void) | undefined;
+    let finished = false;
+    let sendError: unknown;
+
+    const sendPromise = this.sendMultiMedia(
+      peer,
+      payload.items.map((item) => ({
+        file: fileFromPayload(item.file),
+        videoCover: item.videoCover ? fileFromPayload(item.videoCover) : undefined,
+        spoiler: item.spoiler,
+        uploadId: item.uploadId,
+        forceDocument: item.forceDocument,
+        width: item.width,
+        height: item.height,
+        duration: item.duration,
+      })),
+      {
+        message: payload.message,
+        scheduleTime: payload.scheduleTime,
+        replyToMsgId: payload.replyToMsgId,
+        invertMedia: payload.invertMedia,
+        entities: payload.entities,
+        onProgress: (event) => {
+          queue.push(event);
+          notify?.();
+        },
+      },
+    )
+      .then((messageIds) => {
+        queue.push({ stage: 'done', messageIds });
+        finished = true;
+        notify?.();
+      })
+      .catch((err) => {
+        sendError = err;
+        finished = true;
+        notify?.();
+      });
+
+    while (!finished || queue.length > 0) {
+      if (queue.length > 0) {
+        yield queue.shift()!;
+      } else {
+        await new Promise<void>((resolve) => {
+          notify = resolve;
+        });
+      }
+    }
+
+    await sendPromise;
+    if (sendError) throw sendError;
+  }
+
+  private async resolveInputPeerForWrite(
+    peerId: string,
+    accessHash?: string,
+    preferMinContext = false,
+  ): Promise<Api.TypeInputPeer> {
+    if (preferMinContext && this.localDb) {
+      const minCtx = await this.localDb.getMinContext(peerId);
+      if (minCtx) {
+        const seenResolved = await this.localDb.resolveInputPeer(minCtx.seenInPeerId);
+        const seenPeer = toApiInputPeer(seenResolved);
+        if (seenPeer) {
+          const isChannel = getEntityTypeById(peerId) === 'channel';
+          return toApiInputPeerWithSeenPeer(
+            isChannel
+              ? {
+                  type: 'channelFromMessage',
+                  channelId: peerId,
+                  seenInPeerId: minCtx.seenInPeerId,
+                  msgId: minCtx.msgId,
+                }
+              : {
+                  type: 'userFromMessage',
+                  userId: peerId,
+                  seenInPeerId: minCtx.seenInPeerId,
+                  msgId: minCtx.msgId,
+                },
+            seenPeer,
+          );
+        }
+      }
+    }
+
+    if (this.localDb) {
+      const resolved = await this.localDb.resolveInputPeer(peerId);
+      const direct = toApiInputPeer(resolved);
+      if (direct) {
+        return direct;
+      }
+      if (resolved.type === 'userFromMessage' || resolved.type === 'channelFromMessage') {
+        const seenResolved = await this.localDb.resolveInputPeer(resolved.seenInPeerId);
+        const seenPeer = toApiInputPeer(seenResolved);
+        if (seenPeer) {
+          return toApiInputPeerWithSeenPeer(resolved, seenPeer);
+        }
+      }
+    }
+
+    return buildInputPeer(peerId, accessHash);
+  }
+
+  private async refreshPeerForRetry(peerId: string): Promise<'refreshed' | 'minContext' | 'none'> {
+    if (!this.localDb) return 'none';
+    const entity = await this.localDb.getPeer(peerId);
+    const username =
+      entity && 'username' in entity && entity.username
+        ? entity.username
+        : entity && 'usernames' in entity
+          ? entity.usernames?.find((u) => u.active && u.username)?.username
+          : undefined;
+    if (username && this.client) {
+      try {
+        const result = await this.client.invoke(
+          new Api.contacts.ResolveUsername({
+            username: username.trim().replace(/^@+/, ''),
+          }),
+        );
+        if (result instanceof Api.contacts.ResolvedPeer) {
+          const users = (result.users ?? [])
+            .filter((u): u is Api.User => u instanceof Api.User)
+            .map(convertUser);
+          const chats: Chat[] = [];
+          const channels: Channel[] = [];
+          for (const chat of result.chats ?? []) {
+            if (chat instanceof Api.Chat) chats.push(convertChat(chat));
+            else if (chat instanceof Api.Channel) channels.push(convertChannel(chat));
+          }
+          await persistPeers(this.localDb, { users, chats, channels });
+          return 'refreshed';
+        }
+      } catch {
+        // Fall through to minContext fallback if username lookup fails.
+      }
+    }
+    const minCtx = await this.localDb.getMinContext(peerId);
+    return minCtx ? 'minContext' : 'none';
+  }
+
   private resolveInputPeerForRead(chatId: string): Promise<Api.TypeInputPeer> {
     return resolveInputPeerForRead(chatId, this.transportService, this.localDb);
   }
@@ -1656,6 +1988,20 @@ function extractPeersFromMessagesResponse(resp: Api.messages.TypeMessages): {
 
 function convertIgnoringEmpty(messages: Api.TypeMessage[]): Message[] {
   return messages.flatMap((msg) => (isMessageEmpty(msg) ? [] : [convertMessage(msg as Api.Message)]));
+}
+
+function fileFromPayload(file: WorkerFilePayload): File {
+  return new File([file.buffer], file.name, { type: file.type });
+}
+
+function isPeerIdInvalidError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as { name?: string; errorMessage?: string; message?: string };
+  return (
+    e.name === 'PeerIdInvalidError' ||
+    e.errorMessage === 'PEER_ID_INVALID' ||
+    Boolean(e.message && e.message.includes('PEER_ID_INVALID'))
+  );
 }
 
 function isRpcErrorMessage(err: unknown, message: string): boolean {

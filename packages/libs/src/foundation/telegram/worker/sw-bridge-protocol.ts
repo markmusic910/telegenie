@@ -6,11 +6,13 @@
 export const BRIDGE_KIND_INIT = 'bridge.init' as const;
 export const BRIDGE_KIND_READY = 'bridge.ready' as const;
 export const BRIDGE_KIND_CLOSE = 'bridge.close' as const;
+export const BRIDGE_KIND_REQUEST = 'bridge.request' as const;
 
 export type BridgeMessageKind =
   | typeof BRIDGE_KIND_INIT
   | typeof BRIDGE_KIND_READY
-  | typeof BRIDGE_KIND_CLOSE;
+  | typeof BRIDGE_KIND_CLOSE
+  | typeof BRIDGE_KIND_REQUEST;
 
 /**
  * Which MessageChannel pair is being established (both endpoints).
@@ -79,6 +81,7 @@ export function createMessagePortSession(port: MessagePort): MessagePortSession 
 export const BRIDGE_INIT_MESSAGE = { kind: BRIDGE_KIND_INIT } as const;
 export const BRIDGE_READY_MESSAGE = { kind: BRIDGE_KIND_READY } as const;
 export const BRIDGE_CLOSE_MESSAGE = { kind: BRIDGE_KIND_CLOSE } as const;
+export const BRIDGE_REQUEST_MESSAGE = { kind: BRIDGE_KIND_REQUEST } as const;
 
 export function createBridgeInitMessage(link: BridgeLink): BridgeMessage<BridgeInitPayload> {
   return { kind: BRIDGE_KIND_INIT, payload: { link } };

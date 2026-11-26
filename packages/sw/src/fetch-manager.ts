@@ -69,6 +69,9 @@ const DOWNLOAD_QUEUE_SIZE = 8;
 
 export type FetchManagerOptions = {
   getTelegramRpc: () => WorkerClient<TelegramWorkerApi, TelegramWorkerEvents> | undefined;
+  ensureTelegramRpc?: () => Promise<
+    WorkerClient<TelegramWorkerApi, TelegramWorkerEvents> | undefined
+  >;
 };
 
 class FilePartQueue<T> {
@@ -94,12 +97,20 @@ class FilePartQueue<T> {
  */
 export class FetchManager {
   private readonly getTelegramRpc: FetchManagerOptions['getTelegramRpc'];
+  private readonly ensureTelegramRpc: FetchManagerOptions['ensureTelegramRpc'];
   private readonly assetCacheManager = new CacheManager({ cleanupInterval: 0 });
   private readonly progressiveCacheManager = new CacheManager();
   private readonly mediaCacheManager = new CacheManager();
 
   constructor(options: FetchManagerOptions) {
     this.getTelegramRpc = options.getTelegramRpc;
+    this.ensureTelegramRpc = options.ensureTelegramRpc;
+  }
+
+  private async resolveTelegramRpc(): Promise<
+    WorkerClient<TelegramWorkerApi, TelegramWorkerEvents> | undefined
+  > {
+    return this.getTelegramRpc() ?? (await this.ensureTelegramRpc?.());
   }
 
   init(): void {
@@ -164,7 +175,7 @@ export class FetchManager {
     start: number;
     end: number;
   }): Promise<FileGetPartResult | undefined> {
-    const rpc = this.getTelegramRpc();
+    const rpc = await this.resolveTelegramRpc();
     if (!rpc) {
       console.error('[SW] requestPart: Telegram RPC is not connected (sw-telegram bridge missing)');
       return undefined;
@@ -283,7 +294,7 @@ export class FetchManager {
   private async requestDownloadFiles(
     items: FileDownloadItem[],
   ): Promise<FileDownloadResult[] | undefined> {
-    const rpc = this.getTelegramRpc();
+    const rpc = await this.resolveTelegramRpc();
     if (!rpc) {
       return undefined;
     }
@@ -301,7 +312,7 @@ export class FetchManager {
   private async requestDownloadPeerPhotos(
     items: FilePeerPhotoItem[],
   ): Promise<FileDownloadResult[] | undefined> {
-    const rpc = this.getTelegramRpc();
+    const rpc = await this.resolveTelegramRpc();
     if (!rpc) {
       return undefined;
     }

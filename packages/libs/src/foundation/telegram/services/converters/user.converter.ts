@@ -192,7 +192,7 @@ export const convertUser = (user: Api.TypeUser): User => {
       firstName: user.firstName ?? '',
       lastName: user.lastName ?? '',
       username: user.username ?? '',
-      phone: user.phone ?? '',
+      phone: user.phone ?? undefined,
 
       // Boolean flags
       self: user.self ?? false,

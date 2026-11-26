@@ -237,7 +237,7 @@ export class UserController {
 
   /**
    * Push a user peer onto the middle-column profile stack and trigger background `UserFull` sync.
-   * Skips non-user IDs, Saved Messages (`self`), and known deleted accounts.
+   * Skips non-user IDs and known deleted accounts.
    */
   @RequestLog()
   @Method()
@@ -250,15 +250,10 @@ export class UserController {
       return false;
     }
 
-    const selfId = this.globalStore?.auth.currentUser?.id;
-    if (selfId && String(selfId) === trimmed) {
-      return false;
-    }
-
     const existingUser = this.sm.has('user')
       ? (this.sm.get('user').getAllData().get(trimmed) as User | undefined)
       : undefined;
-    if (existingUser?.self || existingUser?.deleted) {
+    if (existingUser?.deleted) {
       return false;
     }
 

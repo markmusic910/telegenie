@@ -1,19 +1,8 @@
-import { CustomFile } from '@telegenie/teleproto/client/uploads';
 import { RpcError, type RpcHandlers } from '../../worker-rpc';
 import { buildInputPeer } from '../helpers/index';
 import { SessionPasswordNeededError } from '../services/auth.service';
 import { Telegram } from '../telegram';
-import {
-  SESSION_PASSWORD_NEEDED_CODE,
-  type SendMediaWorkerProgressEvent,
-  type SendMultiMediaWorkerProgressEvent,
-  type TelegramWorkerApi,
-  type WorkerFilePayload,
-} from './telegram.api';
-
-function fileFromPayload(file: WorkerFilePayload): File {
-  return new File([file.buffer], file.name, { type: file.type });
-}
+import { SESSION_PASSWORD_NEEDED_CODE, type TelegramWorkerApi } from './telegram.api';
 
 function rethrowAuthError(err: unknown): never {
   if (err instanceof SessionPasswordNeededError) {
@@ -23,7 +12,7 @@ function rethrowAuthError(err: unknown): never {
 }
 
 /**
- * Build flat RPC handlers that own a single in-worker {@link Telegram} instance.
+ * Build flat RPC handlers that wire each endpoint directly to its owning service.
  */
 export function createTelegramWorkerHandlers(
   tg: Telegram,
@@ -79,10 +68,9 @@ export function createTelegramWorkerHandlers(
     },
 
     'dialog.getAllDialogs': async function* (folderId) {
-      const dialogService = tg.getDialogService();
       const scope = folderId ?? 0;
       let first = true;
-      for await (const batch of dialogService.getAllDialogs(scope)) {
+      for await (const batch of tg.getDialogService().getAllDialogs(scope)) {
         // Only the main-list pass may reset; the archive pass must keep its ranks.
         tg.ingestDialogPage(batch, { reset: first && scope === 0, folderId: scope });
         first = false;
@@ -205,12 +193,9 @@ export function createTelegramWorkerHandlers(
       return tg.getMessageService().getPinnedMessages(peerId, limit, offsetId);
     },
     'message.searchInPeer': async (peerId, tab, offsetId, limit) => {
-      return tg.getMessageService().searchPeerMessages(
-        peerId,
-        tab,
-        offsetId ?? 0,
-        limit ?? 50,
-      );
+      return tg
+        .getMessageService()
+        .searchPeerMessages(peerId, tab, offsetId ?? 0, limit ?? 50);
     },
     'message.unpinAllMessages': async (peerId) => {
       return tg.getMessageService().unpinAllMessages(peerId);
@@ -238,14 +223,14 @@ export function createTelegramWorkerHandlers(
       replyToMsgId,
       entities,
     ) => {
-      const peer = buildInputPeer(peerId, accessHash);
       return tg
         .getMessageService()
-        .sendMessage(peer, message, scheduleTime, replyToMsgId, entities);
+        .sendMessageByPeerId(peerId, message, accessHash, scheduleTime, replyToMsgId, entities);
     },
     'message.editMessage': async (peerId, messageId, message, accessHash, entities) => {
-      const peer = buildInputPeer(peerId, accessHash);
-      await tg.getMessageService().editMessage(peer, messageId, message, entities);
+      await tg
+        .getMessageService()
+        .editMessageByPeerId(peerId, messageId, message, accessHash, entities);
     },
     'message.forwardMessages': async (
       fromPeerId,
@@ -255,12 +240,9 @@ export function createTelegramWorkerHandlers(
       toAccessHash,
       options,
     ) => {
-      await tg.getMessageService().forwardMessages(
-        buildInputPeer(fromPeerId, fromAccessHash),
-        buildInputPeer(toPeerId, toAccessHash),
-        ids,
-        options,
-      );
+      await tg
+        .getMessageService()
+        .forwardMessagesByPeerId(fromPeerId, toPeerId, ids, fromAccessHash, toAccessHash, options);
     },
     'message.deleteMessages': async (peerId, ids, revoke, accessHash) => {
       await tg.getMessageService().deleteMessages(peerId, ids, revoke, accessHash);
@@ -268,24 +250,27 @@ export function createTelegramWorkerHandlers(
     'message.updatePinnedMessage': async (peerId, messageId, options, accessHash) => {
       await tg
         .getMessageService()
-        .updatePinnedMessage(buildInputPeer(peerId, accessHash), messageId, options);
+        .updatePinnedMessageByPeerId(peerId, messageId, options, accessHash);
     },
     'message.sendSticker': async (peerId, document, accessHash, replyToMsgId) => {
-      const peer = buildInputPeer(peerId, accessHash);
       const { setId, setAccessHash } = document;
       const reload =
         setId && setAccessHash
           ? () => tg.getStickerService().freshFileReference(setId, setAccessHash, document.id)
           : undefined;
-      return tg.getMessageService().sendSticker(peer, document, replyToMsgId, reload);
+      return tg
+        .getMessageService()
+        .sendStickerByPeerId(peerId, document, accessHash, replyToMsgId, reload);
     },
     'message.sendGifResult': async (peerId, queryId, resultId, accessHash, replyToMsgId) => {
-      const peer = buildInputPeer(peerId, accessHash);
-      return tg.getMessageService().sendGifResult(peer, queryId, resultId, replyToMsgId);
+      return tg
+        .getMessageService()
+        .sendGifResultByPeerId(peerId, queryId, resultId, accessHash, replyToMsgId);
     },
     'message.saveDraft': async (peerId, message, accessHash, replyToMsgId, entities) => {
-      const peer = buildInputPeer(peerId, accessHash);
-      await tg.getMessageService().saveDraft(peer, message, replyToMsgId, entities);
+      await tg
+        .getMessageService()
+        .saveDraftByPeerId(peerId, message, accessHash, replyToMsgId, entities);
     },
     'message.sendMedia': async (
       peerId,
@@ -296,135 +281,15 @@ export function createTelegramWorkerHandlers(
       replyToMsgId,
       forceDocument,
     ) => {
-      const peer = buildInputPeer(peerId, accessHash);
       return tg
         .getMessageService()
-        .sendMedia(
-          peer,
-          fileFromPayload(file),
-          message,
-          scheduleTime,
-          replyToMsgId,
-          forceDocument,
-        );
+        .sendMediaByPeerId(peerId, file, message, accessHash, scheduleTime, replyToMsgId, forceDocument);
     },
     'message.sendMediaProgress': async function* (payload) {
-      const peer = buildInputPeer(payload.peerId, payload.accessHash);
-      const queue: SendMediaWorkerProgressEvent[] = [];
-      let notify: (() => void) | undefined;
-      let finished = false;
-      let sendError: unknown;
-
-      const onProgress = (event: {
-        stage: 'uploading_cover' | 'uploading' | 'sending';
-        progress: number;
-      }) => {
-        queue.push(event);
-        notify?.();
-      };
-
-      const sendPromise = tg
-        .getMessageService()
-        .sendMediaWithOptions(peer, fileFromPayload(payload.file), payload.message, {
-          scheduleTime: payload.scheduleTime,
-          replyToMsgId: payload.replyToMsgId,
-          forceDocument: payload.forceDocument,
-          spoiler: payload.spoiler,
-          invertMedia: payload.invertMedia,
-          videoCover: payload.videoCover ? fileFromPayload(payload.videoCover) : undefined,
-          entities: payload.entities,
-          uploadId: payload.uploadId,
-          width: payload.width,
-          height: payload.height,
-          duration: payload.duration,
-          onProgress,
-        })
-        .then((messageId) => {
-          queue.push({ stage: 'done', messageId });
-          finished = true;
-          notify?.();
-        })
-        .catch((err) => {
-          sendError = err;
-          finished = true;
-          notify?.();
-        });
-
-      while (!finished || queue.length > 0) {
-        if (queue.length > 0) {
-          yield queue.shift()!;
-        } else {
-          await new Promise<void>((resolve) => {
-            notify = resolve;
-          });
-        }
-      }
-
-      await sendPromise;
-      if (sendError) throw sendError;
+      yield* tg.getMessageService().streamSendMedia(payload);
     },
     'message.sendMultiMediaProgress': async function* (payload) {
-      const peer = buildInputPeer(payload.peerId, payload.accessHash);
-      const queue: SendMultiMediaWorkerProgressEvent[] = [];
-      let notify: (() => void) | undefined;
-      let finished = false;
-      let sendError: unknown;
-
-      const onProgress = (event: {
-        uploadId: string;
-        stage: 'uploading_cover' | 'uploading' | 'sending';
-        progress: number;
-      }) => {
-        queue.push(event);
-        notify?.();
-      };
-
-      const sendPromise = tg
-        .getMessageService()
-        .sendMultiMedia(
-          peer,
-          payload.items.map((item) => ({
-            file: fileFromPayload(item.file),
-            videoCover: item.videoCover ? fileFromPayload(item.videoCover) : undefined,
-            spoiler: item.spoiler,
-            uploadId: item.uploadId,
-            forceDocument: item.forceDocument,
-            width: item.width,
-            height: item.height,
-            duration: item.duration,
-          })),
-          {
-            message: payload.message,
-            scheduleTime: payload.scheduleTime,
-            replyToMsgId: payload.replyToMsgId,
-            invertMedia: payload.invertMedia,
-            entities: payload.entities,
-            onProgress,
-          },
-        )
-        .then((messageIds) => {
-          queue.push({ stage: 'done', messageIds });
-          finished = true;
-          notify?.();
-        })
-        .catch((err) => {
-          sendError = err;
-          finished = true;
-          notify?.();
-        });
-
-      while (!finished || queue.length > 0) {
-        if (queue.length > 0) {
-          yield queue.shift()!;
-        } else {
-          await new Promise<void>((resolve) => {
-            notify = resolve;
-          });
-        }
-      }
-
-      await sendPromise;
-      if (sendError) throw sendError;
+      yield* tg.getMessageService().streamSendMultiMedia(payload);
     },
     'message.cancelSendMedia': async (uploadId) => {
       return tg.getMessageService().cancelSendMedia(uploadId);
@@ -504,8 +369,7 @@ export function createTelegramWorkerHandlers(
       return tg.getStickerService().getSavedGifs();
     },
     'sticker.searchGifs': async (peerId, query, accessHash) => {
-      const peer = buildInputPeer(peerId, accessHash);
-      return tg.getStickerService().searchGifs(peer, query);
+      return tg.getStickerService().searchGifs(buildInputPeer(peerId, accessHash), query);
     },
     'sticker.getStickersForEmoji': async (emoticon) => {
       return tg.getStickerService().getStickersForEmoji(emoticon);
@@ -521,14 +385,7 @@ export function createTelegramWorkerHandlers(
       return tg.resolveInputPeer(peerId);
     },
     'peers.editPhoto': async (peerId, file, accessHash) => {
-      const peer = buildInputPeer(peerId, accessHash);
-      const customFile = new CustomFile(
-        file.name,
-        file.buffer.byteLength,
-        '',
-        Buffer.from(file.buffer),
-      );
-      await tg.transportService.client.editPhoto(peer, customFile);
+      await tg.editPeerPhoto(peerId, file, accessHash);
     },
 
     'encryptedChat.create': async (userId, accessHash) => {
@@ -541,11 +398,9 @@ export function createTelegramWorkerHandlers(
     'file.getPart': async (params) => {
       return tg.getFileService().getPart(params);
     },
-
     'file.downloadFiles': async (items) => {
       return tg.getFileService().downloadFiles(items);
     },
-
     'file.downloadPeerPhotos': async (items) => {
       return tg.getFileService().downloadPeerPhotos(items);
     },
